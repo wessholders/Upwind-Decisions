@@ -6,6 +6,86 @@
     <meta name="theme-color" content="#101f2b" />
     <meta name="description" content="Practice upwind sailing decisions in repeatable wind shifts, then compare your route with a hindsight benchmark." />
     <title>Upwind — Sailing Decision Trainer</title>
+    <link rel="stylesheet" href="./src/styles.css">
+    <script type="module" src="./src/main.js"></script>
   </head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+  <body>
+    <div class="app-shell">
+      <header class="site-header">
+        <a href="./" class="brand" aria-label="Upwind home">
+          <svg viewBox="0 0 30 32" aria-hidden="true"><path d="M15 1L3 26h12z" fill="currentColor"/><path d="M18 9v17h9zM3 29h24" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <span>UPWIND<span class="brand-sub">DECISION TRAINER</span></span>
+        </a>
+        <span class="header-note">READ THE WIND. SAIL THE SHIFT.</span>
+        <span class="version">TRAINING / 01</span>
+      </header>
+      <main>
+        <noscript><p class="error">Enable JavaScript to run the sailing simulation.</p></noscript>
+        <p id="startup-error" class="error" role="alert">The trainer is loading. If this message remains, serve this folder over HTTP (run <code>node scripts/serve.js</code>) and use a current browser.</p>
+        <div class="intro-row">
+          <div><div class="eyebrow">THE UPWIND LEG</div><h1>Every tack is a decision.</h1><p>Read the shifts. Find your way to the windward mark.</p></div>
+          <div class="scenario-selects">
+            <label>Wind mode<select id="wind-mode"><option value="oscillating">Oscillating</option><option value="persistent">Persistent shift</option><option value="steady">Steady · practice</option></select></label>
+            <label>Difficulty<select id="difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+          </div>
+        </div>
+        <div class="race-layout">
+          <section class="course-panel" aria-label="Interactive racecourse">
+            <div class="course-toolbar">
+              <div class="live-status"><span id="status-dot" class="status-dot"></span><span id="status">READY TO SAIL</span></div>
+              <div class="view-switch" aria-label="Camera view"><button id="full-course" type="button" aria-pressed="true">Full course</button><button id="follow-boat" type="button" aria-pressed="false">Follow boat</button></div>
+            </div>
+            <svg id="course" class="course-svg" viewBox="-580 -1180 1160 1260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sailing course"></svg>
+            <div class="course-footer"><span><span class="legend-line blue"></span>Your route</span><span id="reference-legend" hidden><span class="legend-line gold"></span>Hindsight reference</span><span class="scale-note">Equal scale · meters</span></div>
+          </section>
+          <aside class="instrument-panel" aria-label="Sailing instruments and controls">
+            <div class="compass"><div class="instrument-label">COMPASS HEADING</div><div class="heading"><span id="heading-value" class="heading-value">315</span><span>°</span></div><div id="tack-label" class="tack-label starboard">STARBOARD TACK</div></div>
+            <div class="wind-instrument"><div><span class="instrument-label">TRUE WIND</span><strong id="true-wind">000°</strong></div><div><span class="instrument-label">SHIFT</span><strong id="wind-shift">+0.0°</strong></div></div>
+            <div class="race-stats">
+              <div><span>Elapsed</span><strong id="elapsed">0:00</strong></div>
+              <div><span>Distance</span><strong><span id="distance-value" class="stat-value">0</span> <small>m</small></strong></div>
+              <div><span>Tacks</span><strong id="tack-count">0</strong></div>
+              <div><span>Boat speed</span><strong><span id="speed-value" class="stat-value">5.0</span> <small>kn</small></strong></div>
+            </div>
+            <div class="sailing-controls">
+              <button id="tack" type="button" class="tack-button" disabled><span id="tack-button-text">Tack</span><span aria-hidden="true">↗ ↖</span></button>
+              <button id="bear" type="button" class="bear-button" disabled>Bear away to gate</button>
+              <button id="start" type="button" class="start-button">▶ Start sailing</button>
+            </div>
+            <label class="playback">Playback speed<select id="playback"><option value="1">1× real time</option><option value="4" selected>4×</option><option value="8">8×</option><option value="16">16×</option></select></label>
+            <p id="instrument-hint" class="instrument-hint">Start on starboard. Tack when you choose. Cross the dark gate right to left on starboard to finish.</p>
+            <div class="keyboard-hint">SPACE start / pause <span>T tack</span></div>
+          </aside>
+        </div>
+        <div class="utility-row"><div><button id="new-wind" type="button">↻ New wind</button><button id="retry" type="button">Retry same wind</button></div><button id="toggle-wind" type="button" aria-expanded="true" aria-controls="wind-history">Hide wind history</button></div>
+        <section id="results" class="results" aria-live="polite" hidden></section>
+        <p id="error" class="error" role="alert" hidden></p>
+        <section id="wind-history" class="wind-history" aria-label="Wind direction history">
+          <div class="section-label">WIND HISTORY <span>Relative to baseline · clockwise positive</span></div>
+          <svg id="wind-chart" viewBox="0 0 750 135" role="img" aria-label="Observed wind shifts over elapsed race time"></svg>
+        </section>
+        <details class="advanced">
+          <summary>Advanced settings <span>Course, boat &amp; scenario</span></summary>
+          <p>Settings apply to a new leg. A fixed seed reproduces the same wind. Positive shifts are clockwise. Applying settings resets this leg.</p>
+          <form id="settings-form">
+            <div class="settings-grid">
+              <label>Course length (m)<input name="courseLength" type="number" value="1000" min="100" max="5000" step="100" required></label>
+              <label>Baseline wind from (°)<input name="baseline" type="number" value="0" min="0" max="359" required></label>
+              <label>Boat speed (kn)<input name="speedKnots" type="number" value="5" min="1" max="20" step="0.5" required></label>
+              <label>Minimum true wind angle (°)<input name="minAngle" type="number" value="45" min="30" max="60" required></label>
+              <label>Tack penalty (s)<input name="tackPenalty" type="number" value="5" min="0" max="30" step="0.5" required></label>
+              <label>Maximum wind shift (±°)<input name="maxShift" type="number" value="15" min="0" max="30" required></label>
+              <label>Base transition duration (s)<input name="shiftDuration" type="number" value="40" min="2" max="300" required></label>
+              <label>Boat length (m)<input name="boatLength" type="number" value="5" min="1" max="30" required></label>
+              <label>Gate length (boatlengths)<input name="gateBoatLengths" type="number" value="20" min="1" max="30" required></label>
+              <label>Scenario seed<input name="seed" type="number" value="314159" min="0" max="4294967295" required></label>
+            </div>
+            <button type="submit" class="apply-button">Apply settings &amp; reset</button>
+          </form>
+          <p>Persistent start time, direction, magnitude (60–100% of maximum), and duration (70–130% of base) are seeded. Oscillation difficulty scales transition and hold times. Boatlength defaults to 5 m; the default gate is 100 m.</p>
+        </details>
+        <footer class="page-footer"><span>UPWIND / Build your tactical instinct.</span><span id="scenario-label">Scenario 314159 · Fixed-step sailing model</span></footer>
+      </main>
+    </div>
+  </body>
 </html>

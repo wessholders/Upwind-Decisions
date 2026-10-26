@@ -44,3 +44,15 @@ Next: import and audit the original prototype; compare behavior against the agre
 - `npm.cmd run build`: TypeScript checking and production bundling pass, including the optimizer worker.
 - Launched the Vite development server and verified HTTP 200 at its local URL.
 - Browser inventory exposed no connected browsers or native apps. No visual, responsive-layout, keyboard-interaction or real-browser worker smoke test was possible in this session. These remain verification work, not claimed passes.
+
+## Vanilla conversion — feature/vanilla-html
+
+Converted the framework implementation to static HTML, CSS and native JavaScript modules. The engine and search algorithms retain the same calculations and rules; TypeScript annotations were removed and browser imports now include `.js` extensions. React rendering was replaced with static semantic HTML and focused DOM updates. The player lifecycle is a rendering-free controller shared by the UI and its integration tests.
+
+Removed React, React DOM, TypeScript, Vite, Vitest and their package dependencies. Node's built-in test runner now runs all 27 original regression cases. Added controller, full-leg replay, static module/MIME, DOM-binding, result-escaping and native worker protocol tests. Removed external font loading, so the application has no CDN or font-service dependency. Development serving and source checks use only Node built-ins; no build or package installation is required.
+
+The native module graph is served and fetched over HTTP in an integration test, including the optimizer worker and its engine imports. The worker is additionally exercised in an actual Node worker thread with a browser-message bridge; that verifies imports, structured cloning and optimizer responses, but does not replace a real-browser smoke test. Browser inventory remains empty in this session, so visual desktop/mobile verification and actual browser interactions are still pending.
+
+Deployment consists of `index.html` plus `src/` on any static HTTP host that serves JavaScript MIME types. Opening via `file://` is unsupported because native modules and module workers require HTTP. The local helper binds to loopback and serves only application assets.
+
+Vanilla verification: all 38 tests pass using Node built-ins after pruning the previous package dependencies. `node scripts/check.js` passes syntax, import and HTML entry-asset checks for 23 JavaScript files. HTTP integration confirms the complete native module graph and stylesheet load successfully, including the worker entry. The limitations of the approximate optimizer remain unchanged.

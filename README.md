@@ -1,23 +1,25 @@
 # Upwind Decisions
 
-A local React + TypeScript sailing trainer with a deterministic, rendering-independent engine. Sail an upwind leg by deciding when to tack, then compare with a hindsight reference using the same physics and wind.
+A vanilla HTML, CSS, and JavaScript sailing trainer with a deterministic, rendering-independent engine. Sail an upwind leg by deciding when to tack, then compare with a hindsight reference using the same physics and wind. No frameworks, package dependencies, transpilation, or build step.
 
 ## Run
 
-Requires Node 22.12+ (verified with Node 24).
+Serve this folder with any static HTTP server. The included development server and tests use Node 22.12+ (verified with Node 24); **no `npm install` is needed**.
 
 ```sh
-npm install
-npm run dev
+node scripts/serve.js
 ```
 
-Open the Local URL printed by Vite, normally http://127.0.0.1:5173/. On Windows PowerShell with script execution disabled, use `npm.cmd` in place of `npm`.
+Open http://127.0.0.1:5173/. To use another port, set the `PORT` environment variable. Native JavaScript modules and module workers require HTTP serving; double-clicking `index.html` using `file://` is not supported. No application backend is required.
 
 ```sh
-npm test
-npm run build
-npm run preview
+node --test tests/*.test.js
+node scripts/check.js
 ```
+
+Optional npm aliases: `npm run dev`, `npm test`, and `npm run check`. On Windows PowerShell with script execution disabled, use `npm.cmd` in place of `npm`.
+
+To deploy, upload **`index.html` and the `src/` directory** together to a static host. Paths are relative, so deployment in a subdirectory is supported. There is no `dist/` build output. The host must serve `.js` with a JavaScript MIME type for native modules and the optimizer worker.
 
 ## Sailing
 
@@ -33,19 +35,24 @@ Defaults: 1000 m course; 5 kn boat speed; minimum 45° true wind angle; 5 s stat
 ## Architecture
 
 ```text
+index.html               semantic HTML, controls, settings and instruments
+src/styles.css           responsive layout using local font fallbacks
 src/engine/
-  config.ts      units, defaults, validation, fixed timestep
-  geometry.ts    angles, vectors, tack legality, laylines
-  wind.ts        seeded scenario generation and time-indexed interpolation
-  finish.ts      finite rotating gate and crossing interpolation
-  physics.ts     single authoritative boat model and commands
-  race.ts        deterministic command replay
-  optimizer.ts   bounded beam search and tack counterfactuals
-  scoring.ts     route comparison and formatting
-src/components/ course SVG, observed wind history, post-race analysis
-src/optimizer.worker.ts  background hindsight calculation
-src/App.tsx              race lifecycle and controls
-tests/                   physics, wind, finish, analytical and search regressions
+  config.js      units, defaults, validation, fixed timestep
+  geometry.js    angles, vectors, tack legality, laylines
+  wind.js        seeded scenario generation and time-indexed interpolation
+  finish.js      finite rotating gate and crossing interpolation
+  physics.js     single authoritative boat model and commands
+  race.js        deterministic command replay
+  optimizer.js   bounded beam search and tack counterfactuals
+  scoring.js     route comparison and formatting
+src/views/               course SVG, observed wind history, post-race analysis
+src/race-controller.js   rendering-free player lifecycle and fixed-step clock
+src/main.js              native DOM bindings and animation/worker lifecycle
+src/optimizer.worker.js  native module worker for hindsight calculation
+scripts/serve.js          optional dependency-free local HTTP server
+scripts/check.js          JavaScript syntax and module/asset checks
+tests/                   Node test runner; physics, replay, controls, serving and workers
 ```
 
 The view uses SVG's uniform `preserveAspectRatio="xMidYMid meet"` transform: equal horizontal and vertical meter scales in both camera modes. Boat symbols are enlarged for readability; the underlying positions, gate, and laylines use meters. Baseline compass wind changes compass readings without rotating the course.
@@ -60,7 +67,7 @@ Tack feedback compares the selected finish time with a fresh search that first c
 
 Wind knots are generated at scenario creation and queried by simulation time. Oscillations sample bounded independent targets, with randomized holds and smoothstep transitions, permitting several shifts on the same side of the median. Difficulty scales hold/transition times (easy 1.6×, medium 1×, hard 0.45×). Persistent scenarios randomize start, sign, magnitude and duration from the seed, then hold the final wind. Generated oscillations cover five hours; the final direction is held after that horizon.
 
-The interface runs entirely in the browser. Google Fonts are optional visual enhancements with local fallbacks; simulation needs no network after the application loads. No account, database, analytics, deployment, or external data service is configured.
+The interface runs entirely in the browser. Fonts and assets use local resources; there are no CDN imports or remote font requests. The optional local server only serves static files. No account, database, analytics, deployment, or external data service is configured.
 
 ## Handoff status
 
