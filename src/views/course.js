@@ -5,18 +5,18 @@ import { windAtPosition } from '../engine/wind.js';
 
 const path = points => points.map((p, i) => `${i ? 'L' : 'M'}${p.position.x.toFixed(2)},${(-p.position.y).toFixed(2)}`).join(' ');
 
-export function courseView({ scenario, boat, track, benchmark, follow }) {
+export function courseView({ scenario, boat, track, benchmark, follow, computer = null, inspection = null, displayTime = boat.time }) {
   const { config } = scenario;
   const mark = { x: 0, y: config.courseLength };
-  const wind = windAtPosition(scenario, boat.position.x, boat.position.y, boat.time);
-  const markWind = windAtMark(scenario, boat.time);
-  const gate = gateEnd(scenario, boat.time);
+  const wind = windAtPosition(scenario, boat.position.x, boat.position.y, displayTime);
+  const markWind = windAtMark(scenario, displayTime);
+  const gate = gateEnd(scenario, displayTime);
   const starboard = layline(mark, markWind, 'starboard', config.minAngle, config.boatLength * 100);
   const port = layline(mark, markWind, 'port', config.minAngle, config.boatLength * 100);
   const margin = config.courseLength * 0.08;
   let xmin = -config.courseLength * 0.58, xmax = -xmin;
   let ymin = -margin, ymax = config.courseLength + config.boatLength * config.gateBoatLengths + margin;
-  for (const points of [track, benchmark?.route?.points ?? []]) {
+  for (const points of [track, computer?.track ?? [], benchmark?.route?.points ?? []]) {
     for (const { position } of points) {
       xmin = Math.min(xmin, position.x - margin); xmax = Math.max(xmax, position.x + margin);
       ymin = Math.min(ymin, position.y - margin); ymax = Math.max(ymax, position.y + margin);
@@ -27,12 +27,19 @@ export function courseView({ scenario, boat, track, benchmark, follow }) {
     ? `${boat.position.x - span / 2} ${-boat.position.y - span * 0.7} ${span} ${span}`
     : `${xmin} ${-ymax} ${xmax - xmin} ${ymax - ymin}`;
   const symbol = (follow ? span : Math.max(xmax - xmin, ymax - ymin)) * 0.014;
+  const hull = config.boatLength / 2;
   const grid = config.courseLength / 10;
   const windVector = direction(wind);
   const tackPoints = benchmark?.route?.commands.filter(c => c.action === 'tack').map(c => benchmark.route.points.find(p => p.time >= c.time)) ?? [];
   const reference = benchmark?.route
     ? `<path d="${path(benchmark.route.points)}" fill="none" stroke="#b58a25" stroke-width="2.6" stroke-dasharray="7 6" vector-effect="non-scaling-stroke"/>` : '';
-  const tacks = tackPoints.filter(Boolean).map(p => `<circle cx="${p.position.x}" cy="${-p.position.y}" r="${symbol * 0.45}" fill="#d3a63f" stroke="#fff" stroke-width="1.3" vector-effect="non-scaling-stroke"/>`).join('');
+  const tacks = tackPoints.map((p, i) => p ? `<g class="reference-tack" data-inspect-tack="${i + 1}" role="button" tabindex="0" aria-label="View wind at reference tack ${i + 1}">
+    <circle cx="${p.position.x}" cy="${-p.position.y}" r="${symbol * 1.3}" fill="transparent"/>
+    <circle cx="${p.position.x}" cy="${-p.position.y}" r="${symbol * 0.5}" fill="${inspection?.number === i + 1 ? '#946900' : '#d3a63f'}" stroke="#fff" stroke-width="1.3" vector-effect="non-scaling-stroke"/>
+    <text x="${p.position.x + symbol * 0.7}" y="${-p.position.y - symbol * 0.65}" fill="#8a650f" font-size="${symbol * 0.9}" font-weight="700">${i + 1}</text></g>` : '').join('');
+  const cb = computer?.boat;
+  const computerMarkup = cb && !inspection ? `<path d="${path(computer.track)}" fill="none" stroke="#855ab1" stroke-width="2.2" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
+    <g transform="translate(${cb.position.x},${-cb.position.y}) rotate(${sailingHeading(cb, scenario)})"><circle r="${symbol * 1.05}" fill="#faf5ff" stroke="#855ab1" stroke-width="1.1" vector-effect="non-scaling-stroke"/><path d="M0,${-symbol * 0.7} L${symbol * 0.45},${symbol * 0.45} L${-symbol * 0.45},${symbol * 0.45}Z" fill="#855ab1"/></g>` : '';
   return {
     viewBox,
     label: `Sailing course. Boat ${Math.round(boat.position.x)} meters east and ${Math.round(boat.position.y)} meters up course. Wind shift ${wind.toFixed(1)} degrees.`,
@@ -50,11 +57,11 @@ export function courseView({ scenario, boat, track, benchmark, follow }) {
       <path d="M${-symbol * 3},0 H${symbol * 3}" stroke="#748f96" stroke-width="2" vector-effect="non-scaling-stroke"/>
       <text x="0" y="${symbol * 2.4}" text-anchor="middle" class="map-small" font-size="${symbol}">START</text>
       <path d="${path(track)}" fill="none" stroke="#2678c6" stroke-width="2.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-      ${reference}${tacks}
-      <g transform="translate(${boat.position.x},${-boat.position.y}) rotate(${sailingHeading(boat, scenario)})">
+      ${computerMarkup}${reference}${tacks}
+      <g transform="translate(${boat.position.x},${-boat.position.y}) rotate(${sailingHeading(boat, scenario, displayTime)})" class="${inspection ? 'reference-probe' : 'player-boat'}">
         <circle r="${symbol * 1.4}" fill="#fff" opacity="0.75"/>
-        <path d="M0,${-symbol * 1.3} Q${symbol},${symbol * 0.15} ${symbol * 0.5},${symbol} L${-symbol * 0.5},${symbol} Q${-symbol},${symbol * 0.15} 0,${-symbol * 1.3}" fill="#246caa" stroke="#fff" stroke-width="1.4" vector-effect="non-scaling-stroke"/>
-        <path d="M0,${-symbol * 0.6} L0,${symbol * 0.6}" stroke="#b5d7f1" stroke-width="1" vector-effect="non-scaling-stroke"/>
+        <path d="M0,${-hull} Q${hull * 0.5},0 ${hull * 0.35},${hull} L${-hull * 0.35},${hull} Q${-hull * 0.5},0 0,${-hull}" fill="${inspection ? '#b58a25' : '#246caa'}" stroke="${inspection ? '#b58a25' : '#246caa'}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>
+        <path d="M${-symbol * 0.4},${-symbol * 0.65} L0,${-symbol * 1.1} L${symbol * 0.4},${-symbol * 0.65}" fill="none" stroke="${inspection ? '#b58a25' : '#246caa'}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
       </g>
       ${follow ? '' : `<g transform="translate(${xmin + margin * 1.1},${-ymax + margin * 1.25})">
         <path d="M0,0 l${-windVector.x * symbol * 4},${windVector.y * symbol * 4}" stroke="#527780" stroke-width="2" vector-effect="non-scaling-stroke"/>

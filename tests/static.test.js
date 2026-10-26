@@ -18,7 +18,10 @@ describe('static vanilla application', () => {
     const html = await page.text();
     assert.match(html, /<script type="module" src="\.\/src\/main\.js"/);
     assert.match(html, /<button id="tack"/);
-    const pending = ['/src/main.js', '/src/optimizer.worker.js'];
+    const sandbox = await fetch(base + '/wind-sandbox.html');
+    assert.equal(sandbox.status, 200);
+    assert.match(await sandbox.text(), /src\/wind\/controller.js/);
+    const pending = ['/src/main.js', '/src/optimizer.worker.js', '/src/wind/controller.js'];
     const visited = new Set();
     while (pending.length) {
       const asset = pending.pop();

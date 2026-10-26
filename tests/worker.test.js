@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { DEFAULT_CONFIG } from '../src/engine/config.js';
 import { createScenario } from '../src/engine/wind.js';
 import { replay } from '../src/engine/race.js';
+import { attachWindField } from '../src/wind/field.js';
 
 it('loads the native optimizer worker and returns a structured-cloneable, replayable route', { timeout: 20000 }, async t => {
   const worker = new Worker(new URL('./worker-harness.js', import.meta.url));
@@ -17,8 +18,10 @@ it('loads the native optimizer worker and returns a structured-cloneable, replay
   for (const config of [
     { windMode: 'steady' },
     { windMode: 'persistent', windField: 'traveling', shiftStartTime: 0, transitionWidth: 20 },
+    { windMode: 'steady', organic: true },
   ]) {
-    const scenario = createScenario({ ...DEFAULT_CONFIG, courseLength: 100, ...config });
+    const base = createScenario({ ...DEFAULT_CONFIG, courseLength: 100, ...config });
+    const scenario = config.organic ? attachWindField(base, { seed: 8, maxShift: 10 }) : base;
     worker.postMessage({ scenario, commands: [], time: 0 });
     const [response] = await once(worker, 'message');
     assert.equal(response.error, undefined);

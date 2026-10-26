@@ -7,7 +7,12 @@ export const DEFAULT_CONFIG = {
     shiftDuration: 40, seed: 314159,
     windField: 'uniform', propagationSpeed: 3, transitionWidth: 60,
     persistentShiftAngle: 12, shiftStartTime: 20,
+    favoredSide: 'balanced', windBias: 65, windFrequency: 1.5,
+    windSizeBL: 35, backgroundWindKnots: 10, windContrast: 30, pressureExponent: 0.5,
 };
+// Keep engine callers' legacy default stable; the decision tool starts with
+// the integrated organic field, including pressure-dependent sailing speed.
+export const DEFAULT_TRAINER_CONFIG = { ...DEFAULT_CONFIG, windField: 'organic' };
 export function validateConfig(config) {
     const ranges = {
         courseLength: [100, 5000], speedKnots: [1, 20], minAngle: [30, 60],
@@ -16,6 +21,8 @@ export function validateConfig(config) {
         seed: [0, 4294967295],
         propagationSpeed: [0.5, 20], transitionWidth: [1, 500],
         persistentShiftAngle: [-30, 30], shiftStartTime: [0, 600],
+        windBias: [50, 85], windFrequency: [0, 12], windSizeBL: [15, 75],
+        backgroundWindKnots: [1, 30], windContrast: [0, 70], pressureExponent: [0, 1],
     };
     for (const [key, [min, max]] of Object.entries(ranges)) {
         const value = config[key];
@@ -28,6 +35,8 @@ export function validateConfig(config) {
         throw new Error('Unknown wind mode.');
     if (!['easy', 'medium', 'hard'].includes(config.difficulty))
         throw new Error('Unknown difficulty.');
-    if (!['uniform', 'traveling'].includes(config.windField))
+    if (!['uniform', 'traveling', 'organic'].includes(config.windField))
         throw new Error('Unknown wind field.');
+    if (!['balanced', 'left', 'right'].includes(config.favoredSide))
+        throw new Error('Unknown favored side.');
 }

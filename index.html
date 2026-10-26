@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#101f2b" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23badfce' d='M16 2 3 28h13zm3 9v17h10z'/%3E%3C/svg%3E">
     <meta name="description" content="Practice upwind sailing decisions in repeatable wind shifts, then compare your route with a hindsight benchmark." />
     <title>Upwind — Sailing Decision Trainer</title>
     <link rel="stylesheet" href="./src/styles.css">
@@ -16,20 +17,23 @@
           <svg viewBox="0 0 30 32" aria-hidden="true"><path d="M15 1L3 26h12z" fill="currentColor"/><path d="M18 9v17h9zM3 29h24" fill="none" stroke="currentColor" stroke-width="2"/></svg>
           <span>UPWIND<span class="brand-sub">DECISION TRAINER</span></span>
         </a>
-        <span class="header-note">READ THE WIND. SAIL THE SHIFT.</span>
+        <span class="header-note">READ THE PRESSURE. SAIL THE SHIFT.</span>
         <span class="version">TRAINING / 01</span>
       </header>
       <main>
         <noscript><p class="error">Enable JavaScript to run the sailing simulation.</p></noscript>
         <p id="startup-error" class="error" role="alert">The trainer is loading. If this message remains, serve this folder over HTTP (run <code>node scripts/serve.js</code>) and use a current browser.</p>
         <div class="intro-row">
-          <div><div class="eyebrow">THE UPWIND LEG</div><h1>Every tack is a decision.</h1><p>Read the shifts. Find your way to the windward mark.</p></div>
+          <div><div class="eyebrow">THE UPWIND LEG</div><h1>Every tack is a decision.</h1><p>Read approaching puffs, find the pressure, and sail the shifts.</p></div>
           <div class="scenario-selects">
             <label>Wind mode<select id="wind-mode"><option value="oscillating">Oscillating</option><option value="persistent">Persistent shift</option><option value="steady">Steady · practice</option></select></label>
             <label>Difficulty<select id="difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
-            <label>Wind field<select id="wind-field"><option value="uniform">Uniform</option><option value="traveling">Traveling shifts</option></select></label>
+            <label>Wind field<select id="wind-field"><option value="organic" selected>Puffs &amp; pockets</option><option value="uniform">Uniform shifts</option><option value="traveling">Traveling fronts</option></select></label>
+            <label>Favored side<select id="favored-side"><option value="balanced">Balanced</option><option value="left">Left favored</option><option value="right">Right favored</option></select></label>
           </div>
         </div>
+        <section class="computer-strip" aria-label="Live computer opponent"><strong><i></i>LIVE COMPUTER</strong><span id="computer-state">Ready to race</span><span id="computer-reason">Uses current wind observations, with no future wind schedule.</span></section>
+        <div id="inspection-banner" class="inspection-banner" hidden><strong id="inspection-label"></strong><button id="inspection-return" type="button">Return to live / finish view</button></div>
         <div class="race-layout">
           <section class="course-panel" aria-label="Interactive racecourse">
             <div class="course-toolbar">
@@ -40,12 +44,14 @@
               <canvas id="wind-canvas" class="wind-canvas" aria-hidden="true"></canvas>
               <svg id="course" class="course-svg" viewBox="-580 -1180 1160 1260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sailing course"></svg>
             </div>
-            <div class="course-footer"><span><span class="legend-line blue"></span>Your route</span><span id="reference-legend" hidden><span class="legend-line gold"></span>Hindsight reference</span><span class="scale-note">Equal scale · meters</span></div>
-            <label class="wind-display-control">Wind on water<select id="wind-display"><option value="streaks">Wind streaks</option><option value="boundaries">Streaks + shift fronts</option><option value="hidden">Hidden</option></select></label>
+            <div class="course-footer"><span><span class="legend-line blue"></span>You</span><span><span class="legend-line purple"></span>Live computer</span><span id="reference-legend" hidden><span class="legend-line gold"></span>Hindsight</span><span class="scale-note">Equal scale · meters</span></div>
+            <div class="wind-view-controls"><label class="wind-display-control">Wind on water<select id="wind-display"><option value="streaks">Particles &amp; water</option><option value="boundaries">Show feature boundaries</option><option value="hidden">Hidden</option></select></label><label class="vector-control"><input id="wind-vectors" type="checkbox"> Debug wind vectors</label></div>
+            <div class="wind-view-time" id="wind-time">Wind at 0:00</div><div id="wind-legend" class="wind-legend"><span><i class="pressure-puff"></i>Strong puff · denser, faster</span><span><i class="pressure-pocket"></i>Light air · sparser, slower</span></div>
           </section>
           <aside class="instrument-panel" aria-label="Sailing instruments and controls">
             <div class="compass"><div class="instrument-label">COMPASS HEADING</div><div class="heading"><span id="heading-value" class="heading-value">315</span><span>°</span></div><div id="tack-label" class="tack-label starboard">STARBOARD TACK</div></div>
             <div class="wind-instrument"><div><span class="instrument-label">TRUE WIND</span><strong id="true-wind">000°</strong></div><div><span class="instrument-label">SHIFT</span><strong id="wind-shift">+0.0°</strong></div></div>
+            <div class="pressure-instrument"><strong id="local-wind-speed">10.0 kn</strong><span id="wind-pressure">BACKGROUND</span></div>
             <div class="race-stats">
               <div><span>Elapsed</span><strong id="elapsed">0:00</strong></div>
               <div><span>Distance</span><strong><span id="distance-value" class="stat-value">0</span> <small>m</small></strong></div>
@@ -65,6 +71,7 @@
         <div class="utility-row"><div><button id="new-wind" type="button">↻ New wind</button><button id="retry" type="button">Retry same wind</button></div><button id="toggle-wind" type="button" aria-expanded="true" aria-controls="wind-history">Hide wind history</button></div>
         <section id="results" class="results" aria-live="polite" hidden></section>
         <p id="error" class="error" role="alert" hidden></p>
+        <details class="computer-decisions"><summary>Live computer decisions <span>Current observations only</span></summary><div id="computer-log"></div></details>
         <section id="wind-history" class="wind-history" aria-label="Wind direction history">
           <div class="section-label">WIND HISTORY <span>At boat · clockwise positive</span></div>
           <svg id="wind-chart" viewBox="0 0 750 135" role="img" aria-label="Observed wind shifts over elapsed race time"></svg>
@@ -73,13 +80,26 @@
           <summary>Advanced settings <span>Course, boat &amp; scenario</span></summary>
           <p>Settings apply to a new leg. A fixed seed reproduces the same wind. Positive shifts are clockwise. Applying settings resets this leg.</p>
           <form id="settings-form">
+            <div id="organic-settings" class="organic-settings">
+              <h2>Wind conditions on the course</h2>
+              <div class="settings-grid wind-settings-grid">
+                <label>Favored-side odds (%)<input name="windBias" type="number" value="65" min="50" max="85" step="5" required></label>
+                <label>Features / minute (average)<input name="windFrequency" type="number" value="1.5" min="0" max="12" step="0.1" required></label>
+                <label>Typical patch width (BL)<input name="windSizeBL" type="number" value="35" min="15" max="75" step="5" required></label>
+                <label>Background wind (kn)<input name="backgroundWindKnots" type="number" value="10" min="1" max="30" step="0.5" required></label>
+                <label>Wind-speed contrast (%)<input name="windContrast" type="number" value="30" min="0" max="70" step="5" required></label>
+                <label>Boat pressure response<input name="pressureExponent" type="number" value="0.5" min="0" max="1" step="0.1" required></label>
+              </div>
+              <p>Puffs and light-air pockets move with their own wind. The favored side has a statistical advantage in pressure and shifts, with 65/35 odds by default. Both you and the reference route use this same field.</p>
+              <p>Boat pressure response is a simplified training rule: speed = base boat speed × (local wind / background wind)<sup>response</sup>. The default 0.5 uses a square-root response; 0 keeps boat speed fixed. This is not a calibrated boat polar.</p>
+            </div>
             <div class="settings-grid">
               <label>Course length (m)<input name="courseLength" type="number" value="1000" min="100" max="5000" step="100" required></label>
               <label>Baseline wind from (°)<input name="baseline" type="number" value="0" min="0" max="359" required></label>
-              <label>Boat speed (kn)<input name="speedKnots" type="number" value="5" min="1" max="20" step="0.5" required></label>
+              <label>Base boat speed (kn)<input name="speedKnots" type="number" value="5" min="1" max="20" step="0.5" required></label>
               <label>Minimum true wind angle (°)<input name="minAngle" type="number" value="45" min="30" max="60" required></label>
               <label>Tack penalty (s)<input name="tackPenalty" type="number" value="5" min="0" max="30" step="0.5" required></label>
-              <label>Maximum wind shift (±°)<input name="maxShift" type="number" value="15" min="0" max="30" required></label>
+              <label>Maximum individual shift (±°)<input name="maxShift" type="number" value="15" min="0" max="30" required></label>
               <label>Base transition duration (s)<input name="shiftDuration" type="number" value="40" min="2" max="300" required></label>
               <label>Boat length (m)<input name="boatLength" type="number" value="5" min="1" max="30" required></label>
               <label>Gate length (boatlengths)<input name="gateBoatLengths" type="number" value="20" min="1" max="30" required></label>

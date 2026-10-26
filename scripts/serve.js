@@ -18,7 +18,7 @@ export function createStaticServer(directory = root) {
       const within = relative(directory, target);
       // Only serve application assets, never Git metadata or local packages.
       if (within.startsWith('..') || isAbsolute(within) || name.includes('\\') || name.split('/').some(part => part.startsWith('.')) ||
-          !(name === 'index.html' || /^src\/[a-z0-9/_.-]+\.(js|css)$/i.test(name))) {
+          !(['index.html', 'wind-sandbox.html'].includes(name) || /^src\/[a-z0-9/_.-]+\.(js|css)$/i.test(name))) {
         response.writeHead(404).end(); return;
       }
       const body = await readFile(target);

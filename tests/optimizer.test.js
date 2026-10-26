@@ -31,7 +31,7 @@ describe('changing-wind route search', () => {
         const benchmark = optimize(scenario, commands, player.finish.time);
         assert.ok(benchmark.route?.finish.time <= player.finish.time + 1e-7);
         assert.strictEqual(benchmark.comparisons.length, 2);
-        assert.strictEqual(benchmark.comparisons.every(c => c.delay === 2 && c.chosenTime === benchmark.route?.finish.time), true);
+        assert.strictEqual(benchmark.comparisons.every(c => c.delay === 10 && c.chosenTime === benchmark.route?.finish.time), true);
         assert.deepStrictEqual(optimize(scenario, commands, player.finish.time), benchmark);
     });
     it('handles the full default 1000 m course', { timeout: 30000 }, () => {
@@ -39,6 +39,15 @@ describe('changing-wind route search', () => {
         const result = search(scenario, { interval: 4, width: 100, cell: 4 });
         assert.strictEqual(result.route?.finish.finished, true);
         assert.ok(result.route?.finish.time < 900);
+    });
+    it('includes a known finished live-computer route as an incumbent', () => {
+        const scenario = createScenario({ courseLength: 100, windMode: 'steady' });
+        const sailingTime = 100 / (5 * KNOT_TO_MPS / Math.sqrt(2));
+        const commands = [{ time: 0, action: 'tack' }, { time: 5 + sailingTime / 2, action: 'tack' }];
+        const computer = replay(scenario, commands, sailingTime + 20);
+        const benchmark = optimize(scenario, undefined, undefined, [{ commands, time: computer.finish.time }]);
+        assert.ok(benchmark.route.finish.time <= computer.finish.time + 1e-7);
+        assert.deepEqual(replay(scenario, benchmark.route.commands, benchmark.route.finish.time + 1).finish, benchmark.route.finish);
     });
     it('stays close to the independent 1000 m steady-wind lower bound including both tack costs', { timeout: 30000 }, () => {
         const scenario = createScenario({ ...DEFAULT_CONFIG, windMode: 'steady' });

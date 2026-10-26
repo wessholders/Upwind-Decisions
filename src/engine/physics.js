@@ -1,7 +1,7 @@
 import { KNOT_TO_MPS, STEP } from './config.js';
 import { direction, headingTo, interpolate, normalize, signedAngle, validHeading } from './geometry.js';
 import { finishFraction, gateEnd } from './finish.js';
-import { windAtPosition, windIntegrationStep } from './wind.js';
+import { windAtPosition, windIntegrationStep, windSampleAtPosition } from './wind.js';
 export const initialBoat = () => ({
     position: { x: 0, y: 0 }, time: 0, tack: 'starboard', mode: 'close',
     penaltyRemaining: 0, penaltyTime: 0, distance: 0, tacks: 0, finished: false,
@@ -24,6 +24,15 @@ export function canBearAway(boat, scenario) {
     return Math.abs(signedAngle(direct - close)) > 0.1;
 }
 export const compassHeading = (boat, scenario) => normalize(sailingHeading(boat, scenario) + scenario.config.baseline);
+export function sailingSpeedKnots(boat, scenario, time = boat.time) {
+    if (!scenario.organicWind) return scenario.config.speedKnots;
+    const local = windSampleAtPosition(scenario, boat.position.x, boat.position.y, time);
+    // Explicit simplified training response, not a calibrated boat polar.
+    // Exponent zero retains fixed speed; the default square-root response
+    // makes pressure tactically meaningful for BOTH player and reference.
+    const ratio = Math.max(0.1, local.speedKnots / scenario.organicWind.windKnots);
+    return scenario.config.speedKnots * ratio ** (scenario.config.pressureExponent ?? 0.5);
+}
 export function applyAction(boat, action, scenario) {
     if (boat.finished || boat.penaltyRemaining > 1e-9)
         return boat;
@@ -49,7 +58,7 @@ export function advance(boat, scenario, duration = STEP) {
         const moveTime = state.time + stopped;
         let next = { ...state, time: state.time + dt, penaltyRemaining: Math.max(0, state.penaltyRemaining - dt), penaltyTime: state.penaltyTime + stopped };
         if (moving > 1e-10) {
-            if (scenario.config.windField === 'traveling') {
+            if (scenario.config.windField === 'traveling' || scenario.organicWind) {
                 state = advanceThroughField({ ...next, position: state.position, time: moveTime }, scenario, moving);
                 continue;
             }
@@ -67,22 +76,23 @@ export function advance(boat, scenario, duration = STEP) {
 }
 
 function advanceThroughField(boat, scenario, duration) {
-    const speed = scenario.config.speedKnots * KNOT_TO_MPS;
     const endTime = boat.time + duration;
     let current = boat;
     while (current.time < endTime - 1e-10 && !current.finished) {
+        const initialSpeed = sailingSpeedKnots(current, scenario) * KNOT_TO_MPS;
         const maximum = endTime - current.time;
-        let dt = windIntegrationStep(scenario, current.position.y, current.time, maximum, speed);
+        let dt = windIntegrationStep(scenario, current.position.y, current.time, maximum, initialSpeed, current.position.x);
         const gateLength = scenario.config.boatLength * scenario.config.gateBoatLengths;
-        if (Math.hypot(current.position.x, current.position.y - scenario.config.courseLength) < gateLength + speed * maximum) {
+        if (Math.hypot(current.position.x, current.position.y - scenario.config.courseLength) < gateLength + initialSpeed * maximum) {
             dt = Math.min(dt, windIntegrationStep(scenario, scenario.config.courseLength, current.time, maximum, 0));
         }
         // RK2: sample the field at a predicted midpoint POSITION and time.
         const initial = direction(sailingHeading(current, scenario));
         const midpoint = { ...current, position: {
-            x: current.position.x + initial.x * speed * dt / 2,
-            y: current.position.y + initial.y * speed * dt / 2,
+            x: current.position.x + initial.x * initialSpeed * dt / 2,
+            y: current.position.y + initial.y * initialSpeed * dt / 2,
         } };
+        const speed = sailingSpeedKnots(midpoint, scenario, current.time + dt / 2) * KNOT_TO_MPS;
         const v = direction(sailingHeading(midpoint, scenario, current.time + dt / 2));
         const position = { x: current.position.x + v.x * speed * dt, y: current.position.y + v.y * speed * dt };
         const fraction = finishFraction(scenario, current.position, position, current.time, dt, current.tack);

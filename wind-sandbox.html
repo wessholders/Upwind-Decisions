@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b202b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23badfce' d='M16 2 3 28h13zm3 9v17h10z'/%3E%3C/svg%3E">
+  <title>Upwind — Wind field sandbox</title>
+  <link rel="stylesheet" href="./src/wind/sandbox.css">
+  <script type="module" src="./src/wind/controller.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header><a class="brand" href="./">◭ UPWIND <span>WIND FIELD LAB</span></a><a class="trainer-link" href="./">Sailing trainer ↗</a></header>
+    <main>
+      <div class="intro"><div><p class="eyebrow">READ THE WATER</p><h1>Find the next shift.</h1><p class="subtitle">Explore pressure and direction across a 1,000 m course.</p></div><div class="live-label"><i></i> SPATIAL WIND</div></div>
+      <p id="startup-error" role="alert">Loading wind field. Serve this folder over HTTP if this message remains.</p>
+      <div class="layout">
+        <section class="stage" aria-label="Wind field and boat probe">
+          <div class="toolbar"><button id="play" class="primary" type="button">Pause</button><button id="shuffle" type="button">New shuffle</button><button id="replay" type="button">Replay same seed</button><time id="clock">00:00</time></div>
+          <div class="canvas-wrap"><canvas id="water" tabindex="0" role="img" aria-label="Wind field. Drag the boat or use arrow keys to move the probe; Shift moves farther."></canvas></div>
+          <div class="legend"><span><i class="puff"></i>Strong puff · 4× density</span><span><i class="ambient"></i>Background</span><span><i class="pocket"></i>Light air · 0.4× density</span></div>
+          <div class="stage-note">Equal meter scales · Boat drawn to scale · Drag the gold marker to sample</div>
+        </section>
+        <aside>
+          <section class="panel instruments" aria-label="Local conditions at boat">
+            <div class="panel-heading"><h2>At the boat</h2><button id="tack" type="button">Tack ↗↖</button></div>
+            <div class="readouts"><div><output id="local-direction">000°</output><span>TRUE WIND FROM</span></div><div><output id="local-speed">10.0 <small>kn</small></output><span>WIND SPEED</span></div><div><output id="heading">315°</output><span>BOAT HEADING</span></div><div><output id="tack-label" class="tack-value">STBD</output><span>CURRENT TACK</span></div></div>
+            <p id="region" class="region">Background wind</p>
+          </section>
+          <section class="panel">
+            <h2>Wind scenario</h2>
+            <div class="select-row"><label>Regime<select id="regime"><option value="steady">Steady</option><option value="oscillating" selected>Oscillating</option><option value="persistent">Persistent shift</option></select></label><label>Favored side<select id="favored-side"><option value="balanced">Balanced</option><option value="left">Left favored</option><option value="right">Right favored</option></select></label></div>
+            <label class="range-label" for="probability">Favored-side probability <output id="probability-value">65%</output></label><input id="probability" type="range" min="50" max="85" step="5" value="65">
+            <label class="range-label" for="frequency">Features / minute, average <output id="frequency-value">1.5</output></label><input id="frequency" type="range" min="0.4" max="4" step="0.1" value="1.5">
+            <label class="range-label" for="size">Typical short dimension <output id="size-value">35 BL</output></label><input id="size" type="range" min="15" max="75" step="5" value="35">
+            <label class="range-label" for="shift">Maximum individual shift <output id="shift-value">15°</output></label><input id="shift" type="range" min="0" max="30" value="15">
+            <label class="range-label" for="wind">Background wind <output id="wind-value">10 kn</output></label><input id="wind" type="range" min="4" max="20" value="10">
+            <label class="range-label" for="contrast">Wind-speed contrast <output id="contrast-value">30%</output></label><input id="contrast" type="range" min="10" max="60" step="5" value="30">
+            <p class="help">Settings restart the current seed. A favored side changes the odds of pressure and shifts; it does not guarantee the fastest route.</p>
+          </section>
+          <section class="panel">
+            <h2>Playback & view</h2>
+            <label class="range-label" for="speed">Simulation speed <output id="speed-value">4×</output></label><input id="speed" type="range" min="1" max="15" value="4">
+            <label class="check"><input id="boundaries" type="checkbox"> Show feature boundaries</label>
+            <label class="check"><input id="vectors" type="checkbox"> Show debug wind vectors</label>
+            <p class="help">Particles show local flow. Their two-second lifetimes stay readable at every playback speed.</p>
+          </section>
+        </aside>
+      </div>
+      <section class="scenario-strip" aria-label="Scenario statistics"><div>SEED <strong id="seed">2941</strong></div><div>ACTIVE <strong id="active">0</strong></div><div>PUFFS L / R <strong id="puff-stats">0 / 0</strong></div><div>POCKETS L / R <strong id="pocket-stats">0 / 0</strong></div><div>FAVORABLE SHIFTS ON FAVORED SIDE <strong id="shift-stats">—</strong></div></section>
+      <p class="footer">A simplified training model. The boat is a stationary wind probe. Feature translation follows internal wind; particles move independently through the same field. Side advantage has not been calibrated by racing strategies.</p>
+      <noscript>Enable JavaScript to use the wind sandbox.</noscript>
+    </main>
+  </div>
+</body>
+</html>

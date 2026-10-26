@@ -1,8 +1,9 @@
 import { KNOT_TO_MPS } from './config.js';
 import { direction, dot, radians, subtract } from './geometry.js';
-import { advance, applyAction, initialBoat } from './physics.js';
+import { advance, applyAction, initialBoat, sailingSpeedKnots } from './physics.js';
 import { replay } from './race.js';
 import { windAtPosition } from './wind.js';
+import { describeTack, stateBeforeCommand, TACK_COMPARISON_DELAY, MAX_FINISH_COMPARISONS } from './tack-analysis.js';
 // Ranking only: a frozen-current-wind travel estimate. It is NOT an admissible
 // bound for changing wind, and no optimality claim is made from this heuristic.
 function rank(boat, scenario) {
@@ -12,7 +13,7 @@ function rank(boat, scenario) {
     const up = dot(remaining, v);
     const across = Math.abs(dot(remaining, { x: v.y, y: -v.x }));
     const angle = radians(scenario.config.minAngle);
-    const speed = scenario.config.speedKnots * KNOT_TO_MPS;
+    const speed = sailingSpeedKnots(boat, scenario) * KNOT_TO_MPS;
     const sailing = Math.max(Math.hypot(remaining.x, remaining.y), up / Math.cos(angle), across / Math.sin(angle)) / speed;
     return sailing + boat.penaltyRemaining + (boat.tack === 'port' ? scenario.config.tackPenalty : 0);
 }
@@ -58,29 +59,42 @@ export function search(scenario, options, start = initialBoat(), prefix = [], in
     }
     return { route: best, expanded };
 }
-export function optimize(scenario, playerCommands, playerTime) {
+export function optimize(scenario, playerCommands, playerTime, additionalRoutes = []) {
     // Including the completed player route guarantees a valid known route isn't
     // hidden by beam pruning. It does not alter the physics or search constraints.
     let incumbent = null;
-    if (playerCommands && playerTime !== undefined) {
-        const player = replay(scenario, playerCommands, playerTime + 1);
-        if (player.finish.finished)
-            incumbent = player;
+    const known = [...additionalRoutes];
+    if (playerCommands && playerTime !== undefined) known.push({ commands: playerCommands, time: playerTime });
+    for (const candidate of known) {
+        const route = replay(scenario, candidate.commands, candidate.time + 1);
+        if (route.finish.finished && (!incumbent || route.finish.time < incumbent.finish.time)) incumbent = route;
     }
     const coarse = search(scenario, { interval: 4, width: 100, cell: 4 }, initialBoat(), [], incumbent);
-    const settings = { interval: 2, width: 140, cell: 2 };
+    const settings = { interval: 2, width: 140, cell: 2, comparisonDelay: TACK_COMPARISON_DELAY };
     const fine = search(scenario, settings, initialBoat(), [], coarse.route);
     const route = fine.route;
     const comparisons = [];
     let expanded = coarse.expanded + fine.expanded;
     if (route) {
-        for (const tack of route.commands.filter(c => c.action === 'tack').slice(0, 8)) {
-            const prefix = route.commands.filter(c => c.time < tack.time - 1e-8);
-            const atDecision = replay(scenario, prefix, tack.time).finish;
-            const delayed = advance(atDecision, scenario, settings.interval);
-            const alternative = search(scenario, { ...settings, width: 70, horizon: route.finish.time + 120 }, delayed, prefix);
-            expanded += alternative.expanded;
-            comparisons.push({ time: tack.time, continuedTime: alternative.route?.finish.time ?? null, chosenTime: route.finish.time, delay: settings.interval });
+        for (const [index, command] of route.commands.entries()) {
+            if (command.action !== 'tack') continue;
+            const decision = stateBeforeCommand(scenario, route, index);
+            const checked = comparisons.length < MAX_FINISH_COMPARISONS;
+            let alternative = null;
+            if (checked) {
+                const delayed = advance(decision.boat, scenario, TACK_COMPARISON_DELAY);
+                // If holding already finishes, that is a valid alternative.
+                // Otherwise preserve the identical prefix and replan after 10 s.
+                if (delayed.finished) alternative = replay(scenario, decision.prefix, delayed.time + 1);
+                else {
+                    const result = search(scenario, { ...settings, width: 70, horizon: route.finish.time + 120 }, delayed, decision.prefix);
+                    expanded += result.expanded;
+                    alternative = result.route;
+                }
+            }
+            comparisons.push(describeTack(scenario, route, index, comparisons.length + 1, decision, {
+                checked, continuedTime: alternative?.finish.time ?? null, delay: TACK_COMPARISON_DELAY,
+            }));
         }
     }
     return { route, comparisons, settings, expanded, label: 'Best route found · hindsight benchmark' };

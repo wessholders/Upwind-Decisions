@@ -1,6 +1,6 @@
 # Upwind Decisions
 
-A vanilla HTML, CSS, and JavaScript sailing trainer with a deterministic, rendering-independent engine. Sail an upwind leg by deciding when to tack, then compare with a hindsight reference using the same physics and wind. No frameworks, package dependencies, transpilation, or build step.
+A vanilla HTML, CSS, and JavaScript sailing trainer with a deterministic, rendering-independent engine. Read moving organic puffs and light-air pockets, decide when to tack, and compare your upwind route with a hindsight reference using the same local wind and boat-speed response. No frameworks, package dependencies, transpilation, or build step.
 
 ## Run
 
@@ -19,16 +19,29 @@ node scripts/check.js
 
 Optional npm aliases: `npm run dev`, `npm test`, and `npm run check`. On Windows PowerShell with script execution disabled, use `npm.cmd` in place of `npm`.
 
-To deploy, upload **`index.html` and the `src/` directory** together to a static host. Paths are relative, so deployment in a subdirectory is supported. There is no `dist/` build output. The host must serve `.js` with a JavaScript MIME type for native modules and the optimizer worker.
+To deploy, upload **`index.html`, `wind-sandbox.html` and the `src/` directory** together to a static host. Paths are relative, so deployment in a subdirectory is supported. There is no `dist/` build output. The host must serve `.js` with a JavaScript MIME type for native modules and the optimizer worker.
+
+## Wind on the sailing course
+
+The main trainer at `/` opens with **Puffs & pockets** selected. The sailing course displays seeded organic puffs, light-air pockets, flowing particles, and subtle pressure shading. Choose steady, persistent or oscillating wind and a balanced, left-favored or right-favored course. Wind on water controls toggle feature boundaries or hide the display; the debug-vector checkbox is independent.
+
+The boat, compass, live wind-strength instrument, wind history, finish gate, and hindsight optimizer sample the same authoritative field. Puffs increase boat speed and light air reduces it using the explicit training rule `base boat speed × (local wind / background wind)^response`. The default response is 0.5 (square root); set it to 0 to keep speed fixed. This is a simplified pressure response, not a calibrated polar. Tack penalties, legal headings, bear-away steering and finish rules are preserved.
+
+Under **Advanced settings**, adjust the favored-side probability (default 65/35), feature frequency, nominal patch width in boatlengths, background wind, speed contrast, pressure response and maximum shift. Applying settings starts a fresh leg; **Retry same wind** preserves the exact seed and conditions. The earlier uniform and traveling-front modes remain available.
+
+The optional [wind inspection lab](wind-sandbox.html) remains available for dragging a stationary probe around the field. It shares the wind modules with the main trainer; gameplay takes place in the main trainer. See [the integrated wind-field design and prototype audit](docs/WIND_FIELD.md) for implementation and validation details.
 
 ## Sailing
 
+- A purple **live computer** starts alongside you, sailing through the same wind with the same boat model, tack costs and finish rules. It makes decisions every 2 s from current wind observations. Its one-minute prediction freezes the current map; it has no future wind schedule or hindsight optimizer.
 - Start on starboard; the boat automatically follows the changing wind close-hauled.
 - Use **Tack** (keyboard T) to change tack. Both player and reference stop for the configured penalty. Space starts/pauses.
 - **Bear away to gate** becomes available when aiming at the gate center is legal on the current tack. It never crosses the no-go zone. Return to close-hauled at any time.
 - Cross the finite dark gate right to left on starboard. It extends upwind from the mark and rotates with the wind. Laylines are visual references, never boundaries.
 - New wind creates a seed; retry preserves the exact scenario. Advanced settings apply when you reset the leg.
-- The gold hindsight route and numerical decision comparisons appear after finishing. The search includes your completed route as an incumbent, so beam pruning cannot discard a faster known valid result.
+- The gold hindsight route and numerical decision comparisons appear after finishing. The search includes your completed route and any already-finished computer route as incumbents, so beam pruning cannot discard a faster known valid result.
+- Open **Live computer decisions** to read its choices. If you finish first, it keeps racing; use Pause/Resume computer to control playback while your result stays fixed.
+- After finishing, the gold reference's numbered tack cards show local wind, heading changes, pressure/progress tradeoffs and a 10 s delay comparison. Click **View wind at this tack**, or a numbered gold marker, to replay that exact decision's field and instruments. Return to the finish view to resume a still-racing computer.
 
 ## Traveling wind
 
@@ -42,7 +55,7 @@ This is a simplified training model. Horizontal fronts move along the down-cours
 
 See [the spatial model](docs/SPATIAL_WIND.md) for equations, numerical limits and validation.
 
-Defaults: 1000 m course; 5 kn boat speed; minimum 45° true wind angle; 5 s stationary tack penalty; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° wind bound. No current, waves, wind-strength variation, polar curve, or apparent-wind model.
+Trainer defaults: organic wind; 1000 m course; 5 kn base boat speed at 10 kn background wind; square-root pressure response; minimum 45° true wind angle; 5 s stationary tack penalty; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° individual background/local shift bound. Background and feature deviations can combine. No current, waves, calibrated polar curve, or apparent-wind model. Legacy uniform/traveling modes retain fixed boat speed.
 
 ## Architecture
 
@@ -68,15 +81,17 @@ scripts/check.js          JavaScript syntax and module/asset checks
 tests/                   Node test runner; physics, replay, controls, serving and workers
 ```
 
-The view uses SVG's uniform `preserveAspectRatio="xMidYMid meet"` transform: equal horizontal and vertical meter scales in both camera modes. Boat symbols are enlarged for readability; the underlying positions, gate, and laylines use meters. Baseline compass wind changes compass readings without rotating the course.
+The view uses SVG's uniform `preserveAspectRatio="xMidYMid meet"` transform: equal horizontal and vertical meter scales in both camera modes. The organic wind layer uses the same projection, including SVG padding and camera changes. The hull is drawn to its configured meter length, with an enlarged location/heading marker. Baseline compass wind changes compass readings without rotating the course.
 
 ## Numerical limits
 
-The integrator uses a maximum **0.25 s** outer step. Uniform wind retains midpoint time sampling; traveling wind uses predicted midpoint position/time sampling with smaller integration steps near narrow fronts. Playback uses only fixed outer steps, independent of refresh rate. Tack penalties and finish times may end on a partial step. Finish detection evaluates the rotating gate and uses bisection within a linear movement substep. Movement and rotating-gate crossing therefore remain numerical approximations, not exact continuous-time solutions. Extremely fast externally supplied wind curves are outside the tested generator's range.
+The integrator uses a maximum **0.25 s** outer step. Uniform wind retains midpoint time sampling; traveling and organic wind use predicted midpoint position/time sampling. Organic mode samples pressure-dependent boat speed at that same midpoint and shortens integration steps near small, fast patches; traveling mode shortens them near narrow fronts. Playback uses only fixed outer steps, independent of refresh rate. Tack penalties and finish times may end on a partial step. Finish detection evaluates the rotating gate and uses bisection within a linear movement substep. Movement and rotating-gate crossing therefore remain numerical approximations, not exact continuous-time solutions. Extremely fast externally supplied wind curves are outside the tested generator's range.
 
 The benchmark uses a 4 s coarse search followed by a 2 s search with a 140-state beam and 2 m position cells. It includes hold, tack, gate-aim, and close-hauled actions. Gate aiming targets the center of the finite gate; it does not enumerate every legal bearing-away angle. Its heuristic estimates travel using frozen current wind and is not an admissible bound under future shifts. Pruning, time/space discretization, a finite horizon, and the restricted steering set can all miss better routes. **Best route found numerically; global optimality is not certified.**
 
-Tack feedback compares the selected finish time with a fresh search that first continues for two seconds from the same preceding route. It reports measured completion times, including improvements or failures to find a valid continuation. This is a search comparison, not proof of causation or a certified advantage. The first eight reference tacks receive comparisons to bound processing time.
+Tack feedback reconstructs each exact pre-tack state and shows local wind, recent encountered lift/header, sailing headings, up-course speed components and controlled short projections through the evolving wind with/without the tack, including its stop penalty. For the first eight tacks, a fresh search first continues for ten seconds from the identical preceding route, then replans. It reports absolute elapsed finish times and flags ties, better delayed routes or failures to find a valid continuation. These are measured tradeoffs and search comparisons, not proof of a unique timing or isolated cause.
+
+The live computer is a separate heuristic policy. Its input is a plain current-time observation grid, local wind, boat state, course geometry and public boat parameters; it receives no scenario seed, generator, future features or future-sampling API. Its forecast and choice functions cannot access the authoritative scenario. The physics adapter subsequently moves its boat through the actual field, just like the player. Computer command logs replay through the same engine. Neither opponent is advertised as mathematically optimal.
 
 Wind knots are generated at scenario creation and queried by simulation time. Oscillations sample bounded independent targets, with randomized holds and smoothstep transitions, permitting several shifts on the same side of the median. Difficulty scales hold/transition times (easy 1.6×, medium 1×, hard 0.45×). Persistent scenarios randomize start, sign, magnitude and duration from the seed, then hold the final wind. Generated oscillations cover five hours; the final direction is held after that horizon.
 
@@ -84,4 +99,4 @@ The interface runs entirely in the browser. Fonts and assets use local resources
 
 ## Handoff status
 
-The provided attachment contained the project brief only. This repository was empty, so this is a new implementation from the specified rules, **not a verified port or audit of the missing HTML prototype**. See [the audit and next steps](docs/AUDIT.md).
+The initial trainer was implemented from its written brief, before the original trainer HTML was available. The later wind-field increment inspected the supplied blob-shape demo and preserved the existing trainer. See [the original audit](docs/AUDIT.md) and [the current wind-field audit](docs/WIND_FIELD.md).
