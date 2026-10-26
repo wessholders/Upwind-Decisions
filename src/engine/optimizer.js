@@ -2,11 +2,11 @@ import { KNOT_TO_MPS } from './config.js';
 import { direction, dot, radians, subtract } from './geometry.js';
 import { advance, applyAction, initialBoat } from './physics.js';
 import { replay } from './race.js';
-import { windAt } from './wind.js';
+import { windAtPosition } from './wind.js';
 // Ranking only: a frozen-current-wind travel estimate. It is NOT an admissible
 // bound for changing wind, and no optimality claim is made from this heuristic.
 function rank(boat, scenario) {
-    const wind = windAt(scenario, boat.time);
+    const wind = windAtPosition(scenario, boat.position.x, boat.position.y, boat.time);
     const remaining = subtract({ x: 0, y: scenario.config.courseLength + 1 }, boat.position);
     const v = direction(wind);
     const up = dot(remaining, v);

@@ -9,3 +9,14 @@
 .heading>.heading-value{font-size:inherit;vertical-align:baseline;line-height:inherit;margin:0}
 .race-stats .stat-value{display:inline;color:inherit;font-size:inherit;margin:0}
 #tack-button-text{font-size:inherit}
+
+.course-water{position:relative;min-width:0}
+.course-toolbar{z-index:3}
+.wind-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.course-water .course-svg{position:relative;z-index:1}
+.wind-display-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 20px;border-top:1px solid #d6e4e4;font-size:10px;color:#526f78}
+.wind-display-control select{font:inherit;color:#294853;background:#f7fbf8;border:1px solid #cddcdd;border-radius:3px;padding:6px 9px}
+.scenario-selects{flex-wrap:wrap;justify-content:flex-end}
+.scenario-selects select{min-width:125px}
+@media(max-width:850px){.intro-row{flex-wrap:wrap}.scenario-selects{justify-content:flex-start}}
+@media(max-width:620px){.scenario-selects{flex-wrap:nowrap}.scenario-selects label{min-width:0}.scenario-selects select{min-width:0;font-size:11px}.wind-display-control{padding:9px 12px}}

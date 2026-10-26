@@ -14,12 +14,17 @@ it('loads the native optimizer worker and returns a structured-cloneable, replay
   worker.postMessage({ scenario: null, commands: [], time: 0 });
   const [failure] = await once(worker, 'message');
   assert.equal(typeof failure.error, 'string');
-  const scenario = createScenario({ ...DEFAULT_CONFIG, courseLength: 100, windMode: 'steady' });
-  worker.postMessage({ scenario, commands: [], time: 0 });
-  const [response] = await once(worker, 'message');
-  assert.equal(response.error, undefined);
-  assert.equal(response.result.route.finish.finished, true);
-  const { commands, finish } = response.result.route;
-  assert.deepEqual(replay(scenario, commands, finish.time + 1).finish, finish);
-  assert.ok(response.result.comparisons.length > 0);
+  for (const config of [
+    { windMode: 'steady' },
+    { windMode: 'persistent', windField: 'traveling', shiftStartTime: 0, transitionWidth: 20 },
+  ]) {
+    const scenario = createScenario({ ...DEFAULT_CONFIG, courseLength: 100, ...config });
+    worker.postMessage({ scenario, commands: [], time: 0 });
+    const [response] = await once(worker, 'message');
+    assert.equal(response.error, undefined);
+    assert.equal(response.result.route.finish.finished, true);
+    const { commands, finish } = response.result.route;
+    assert.deepEqual(replay(scenario, commands, finish.time + 1).finish, finish);
+    assert.ok(response.result.comparisons.length > 0);
+  }
 });

@@ -27,6 +27,7 @@
           <div class="scenario-selects">
             <label>Wind mode<select id="wind-mode"><option value="oscillating">Oscillating</option><option value="persistent">Persistent shift</option><option value="steady">Steady · practice</option></select></label>
             <label>Difficulty<select id="difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+            <label>Wind field<select id="wind-field"><option value="uniform">Uniform</option><option value="traveling">Traveling shifts</option></select></label>
           </div>
         </div>
         <div class="race-layout">
@@ -35,8 +36,12 @@
               <div class="live-status"><span id="status-dot" class="status-dot"></span><span id="status">READY TO SAIL</span></div>
               <div class="view-switch" aria-label="Camera view"><button id="full-course" type="button" aria-pressed="true">Full course</button><button id="follow-boat" type="button" aria-pressed="false">Follow boat</button></div>
             </div>
-            <svg id="course" class="course-svg" viewBox="-580 -1180 1160 1260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sailing course"></svg>
+            <div class="course-water">
+              <canvas id="wind-canvas" class="wind-canvas" aria-hidden="true"></canvas>
+              <svg id="course" class="course-svg" viewBox="-580 -1180 1160 1260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sailing course"></svg>
+            </div>
             <div class="course-footer"><span><span class="legend-line blue"></span>Your route</span><span id="reference-legend" hidden><span class="legend-line gold"></span>Hindsight reference</span><span class="scale-note">Equal scale · meters</span></div>
+            <label class="wind-display-control">Wind on water<select id="wind-display"><option value="streaks">Wind streaks</option><option value="boundaries">Streaks + shift fronts</option><option value="hidden">Hidden</option></select></label>
           </section>
           <aside class="instrument-panel" aria-label="Sailing instruments and controls">
             <div class="compass"><div class="instrument-label">COMPASS HEADING</div><div class="heading"><span id="heading-value" class="heading-value">315</span><span>°</span></div><div id="tack-label" class="tack-label starboard">STARBOARD TACK</div></div>
@@ -61,7 +66,7 @@
         <section id="results" class="results" aria-live="polite" hidden></section>
         <p id="error" class="error" role="alert" hidden></p>
         <section id="wind-history" class="wind-history" aria-label="Wind direction history">
-          <div class="section-label">WIND HISTORY <span>Relative to baseline · clockwise positive</span></div>
+          <div class="section-label">WIND HISTORY <span>At boat · clockwise positive</span></div>
           <svg id="wind-chart" viewBox="0 0 750 135" role="img" aria-label="Observed wind shifts over elapsed race time"></svg>
         </section>
         <details class="advanced">
@@ -79,10 +84,16 @@
               <label>Boat length (m)<input name="boatLength" type="number" value="5" min="1" max="30" required></label>
               <label>Gate length (boatlengths)<input name="gateBoatLengths" type="number" value="20" min="1" max="30" required></label>
               <label>Scenario seed<input name="seed" type="number" value="314159" min="0" max="4294967295" required></label>
+              <label>Pattern propagation (m/s)<input name="propagationSpeed" type="number" value="3" min="0.5" max="20" step="0.5" required></label>
+              <label>Traveling transition width (m)<input name="transitionWidth" type="number" value="60" min="1" max="500" required></label>
+              <label>Traveling persistent angle (°)<input name="persistentShiftAngle" type="number" value="12" min="-30" max="30" required></label>
+              <label>Persistent entry start (s)<input name="shiftStartTime" type="number" value="20" min="0" max="600" required></label>
             </div>
             <button type="submit" class="apply-button">Apply settings &amp; reset</button>
           </form>
-          <p>Persistent start time, direction, magnitude (60–100% of maximum), and duration (70–130% of base) are seeded. Oscillation difficulty scales transition and hold times. Boatlength defaults to 5 m; the default gate is 100 m.</p>
+          <p>Uniform persistent shifts use seeded start, direction, magnitude and duration. Traveling persistent shifts use the angle, entry start and width above. Traveling oscillations use seeded targets and holds with the selected transition width.</p>
+          <p>Traveling wind is a simplified training model: horizontal fronts move down the course at the pattern speed. This is separate from boat speed and actual wind speed. Dashed fronts show transition centers; streak angles show local wind direction. Laylines and the gate follow wind at the mark.</p>
+          <button id="traveling-demo" class="apply-button" type="button">Load 300 m traveling-shift demo</button>
         </details>
         <footer class="page-footer"><span>UPWIND / Build your tactical instinct.</span><span id="scenario-label">Scenario 314159 · Fixed-step sailing model</span></footer>
       </main>

@@ -1,17 +1,18 @@
-import { gateEnd } from '../engine/finish.js';
+import { gateEnd, windAtMark } from '../engine/finish.js';
 import { direction, layline } from '../engine/geometry.js';
 import { sailingHeading } from '../engine/physics.js';
-import { windAt } from '../engine/wind.js';
+import { windAtPosition } from '../engine/wind.js';
 
 const path = points => points.map((p, i) => `${i ? 'L' : 'M'}${p.position.x.toFixed(2)},${(-p.position.y).toFixed(2)}`).join(' ');
 
 export function courseView({ scenario, boat, track, benchmark, follow }) {
   const { config } = scenario;
   const mark = { x: 0, y: config.courseLength };
-  const wind = windAt(scenario, boat.time);
+  const wind = windAtPosition(scenario, boat.position.x, boat.position.y, boat.time);
+  const markWind = windAtMark(scenario, boat.time);
   const gate = gateEnd(scenario, boat.time);
-  const starboard = layline(mark, wind, 'starboard', config.minAngle, config.boatLength * 100);
-  const port = layline(mark, wind, 'port', config.minAngle, config.boatLength * 100);
+  const starboard = layline(mark, markWind, 'starboard', config.minAngle, config.boatLength * 100);
+  const port = layline(mark, markWind, 'port', config.minAngle, config.boatLength * 100);
   const margin = config.courseLength * 0.08;
   let xmin = -config.courseLength * 0.58, xmax = -xmin;
   let ymin = -margin, ymax = config.courseLength + config.boatLength * config.gateBoatLengths + margin;
@@ -57,7 +58,7 @@ export function courseView({ scenario, boat, track, benchmark, follow }) {
       </g>
       ${follow ? '' : `<g transform="translate(${xmin + margin * 1.1},${-ymax + margin * 1.25})">
         <path d="M0,0 l${-windVector.x * symbol * 4},${windVector.y * symbol * 4}" stroke="#527780" stroke-width="2" vector-effect="non-scaling-stroke"/>
-        <text x="${symbol * 1.1}" y="${symbol}" font-size="${symbol * 0.9}" class="map-small">TRUE WIND</text>
+        <text x="${symbol * 1.1}" y="${symbol}" font-size="${symbol * 0.9}" class="map-small">WIND AT BOAT</text>
         <text x="${symbol * 1.1}" y="${symbol * 2.25}" font-size="${symbol * 0.85}" class="map-small">${wind >= 0 ? '+' : ''}${wind.toFixed(1)}°</text>
       </g>`}`,
   };

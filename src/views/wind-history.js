@@ -1,13 +1,14 @@
-import { windAt } from '../engine/wind.js';
+import { windAt, windAtPosition } from '../engine/wind.js';
 import { formatTime } from '../engine/scoring.js';
 
-export function windHistoryView(scenario, time) {
+export function windHistoryView(scenario, time, observations = []) {
   const duration = Math.max(120, time);
-  const range = Math.max(5, scenario.config.maxShift);
+  const range = Math.max(5, scenario.config.maxShift, scenario.config.windField === 'traveling' && scenario.config.windMode === 'persistent' ? Math.abs(scenario.config.persistentShiftAngle) : 0);
   const x = t => 40 + t / duration * 690;
   const y = shift => 65 - shift / range * 43;
   const samples = Math.max(1, Math.ceil(time / 2));
-  const points = Array.from({ length: samples + 1 }, (_, i) => {
+  const points = scenario.config.windField === 'traveling' ? observations.filter(p => p.time <= time).map(p =>
+    `${x(p.time)},${y(windAtPosition(scenario, p.position.x, p.position.y, p.time))}`).join(' ') : Array.from({ length: samples + 1 }, (_, i) => {
     const t = i / samples * time;
     return `${x(t)},${y(windAt(scenario, t))}`;
   }).join(' ');

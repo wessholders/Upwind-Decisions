@@ -5,6 +5,8 @@ export const DEFAULT_CONFIG = {
     baseline: 0, boatLength: 5, gateBoatLengths: 20,
     windMode: 'oscillating', difficulty: 'easy', maxShift: 15,
     shiftDuration: 40, seed: 314159,
+    windField: 'uniform', propagationSpeed: 3, transitionWidth: 60,
+    persistentShiftAngle: 12, shiftStartTime: 20,
 };
 export function validateConfig(config) {
     const ranges = {
@@ -12,6 +14,8 @@ export function validateConfig(config) {
         tackPenalty: [0, 30], baseline: [0, 359], boatLength: [1, 30],
         gateBoatLengths: [1, 30], maxShift: [0, 30], shiftDuration: [2, 300],
         seed: [0, 4294967295],
+        propagationSpeed: [0.5, 20], transitionWidth: [1, 500],
+        persistentShiftAngle: [-30, 30], shiftStartTime: [0, 600],
     };
     for (const [key, [min, max]] of Object.entries(ranges)) {
         const value = config[key];
@@ -24,4 +28,6 @@ export function validateConfig(config) {
         throw new Error('Unknown wind mode.');
     if (!['easy', 'medium', 'hard'].includes(config.difficulty))
         throw new Error('Unknown difficulty.');
+    if (!['uniform', 'traveling'].includes(config.windField))
+        throw new Error('Unknown wind field.');
 }

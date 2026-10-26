@@ -1,13 +1,13 @@
 import { KNOT_TO_MPS, STEP } from './config.js';
 import { direction, headingTo, interpolate, normalize, signedAngle, validHeading } from './geometry.js';
 import { finishFraction, gateEnd } from './finish.js';
-import { windAt } from './wind.js';
+import { windAtPosition, windIntegrationStep } from './wind.js';
 export const initialBoat = () => ({
     position: { x: 0, y: 0 }, time: 0, tack: 'starboard', mode: 'close',
     penaltyRemaining: 0, penaltyTime: 0, distance: 0, tacks: 0, finished: false,
 });
 export function sailingHeading(boat, scenario, time = boat.time) {
-    const wind = windAt(scenario, time);
+    const wind = windAtPosition(scenario, boat.position.x, boat.position.y, time);
     const close = wind + (boat.tack === 'starboard' ? -scenario.config.minAngle : scenario.config.minAngle);
     if (boat.mode === 'gate') {
         const end = gateEnd(scenario, time);
@@ -49,6 +49,10 @@ export function advance(boat, scenario, duration = STEP) {
         const moveTime = state.time + stopped;
         let next = { ...state, time: state.time + dt, penaltyRemaining: Math.max(0, state.penaltyRemaining - dt), penaltyTime: state.penaltyTime + stopped };
         if (moving > 1e-10) {
+            if (scenario.config.windField === 'traveling') {
+                state = advanceThroughField({ ...next, position: state.position, time: moveTime }, scenario, moving);
+                continue;
+            }
             const v = direction(sailingHeading(state, scenario, moveTime + moving / 2));
             const distance = scenario.config.speedKnots * KNOT_TO_MPS * moving;
             const position = { x: state.position.x + v.x * distance, y: state.position.y + v.y * distance };
@@ -60,4 +64,33 @@ export function advance(boat, scenario, duration = STEP) {
         state = next;
     }
     return state;
+}
+
+function advanceThroughField(boat, scenario, duration) {
+    const speed = scenario.config.speedKnots * KNOT_TO_MPS;
+    const endTime = boat.time + duration;
+    let current = boat;
+    while (current.time < endTime - 1e-10 && !current.finished) {
+        const maximum = endTime - current.time;
+        let dt = windIntegrationStep(scenario, current.position.y, current.time, maximum, speed);
+        const gateLength = scenario.config.boatLength * scenario.config.gateBoatLengths;
+        if (Math.hypot(current.position.x, current.position.y - scenario.config.courseLength) < gateLength + speed * maximum) {
+            dt = Math.min(dt, windIntegrationStep(scenario, scenario.config.courseLength, current.time, maximum, 0));
+        }
+        // RK2: sample the field at a predicted midpoint POSITION and time.
+        const initial = direction(sailingHeading(current, scenario));
+        const midpoint = { ...current, position: {
+            x: current.position.x + initial.x * speed * dt / 2,
+            y: current.position.y + initial.y * speed * dt / 2,
+        } };
+        const v = direction(sailingHeading(midpoint, scenario, current.time + dt / 2));
+        const position = { x: current.position.x + v.x * speed * dt, y: current.position.y + v.y * speed * dt };
+        const fraction = finishFraction(scenario, current.position, position, current.time, dt, current.tack);
+        current = {
+            ...current, position: fraction === null ? position : interpolate(current.position, position, fraction),
+            time: current.time + dt * (fraction ?? 1), distance: current.distance + speed * dt * (fraction ?? 1),
+            finished: fraction !== null,
+        };
+    }
+    return current.finished ? current : { ...current, time: endTime };
 }

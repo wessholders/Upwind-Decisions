@@ -30,6 +30,18 @@ To deploy, upload **`index.html` and the `src/` directory** together to a static
 - New wind creates a seed; retry preserves the exact scenario. Advanced settings apply when you reset the leg.
 - The gold hindsight route and numerical decision comparisons appear after finishing. The search includes your completed route as an incumbent, so beam pruning cannot discard a faster known valid result.
 
+## Traveling wind
+
+Choose **Wind field → Traveling shifts** to see shifts move down the course and reach the boat at its actual position. **Uniform** preserves the original simultaneous-shift scenarios. **Wind on water** offers directional streaks, streaks with dashed shift-front guides, or hidden wind; these display options do not change physics.
+
+For a quick demonstration, open **Advanced settings → Load 300 m traveling-shift demo**, then press **Start sailing**. At 8× playback, a +12° front enters from above the mark and moves toward the boat. Watch the streaks rotate in the approaching region while the compass holds its old heading, then changes as the boat reaches the front. Pause, retry the same wind, or switch display modes to inspect it. The demo sets a 3 m/s pattern speed, 30 m smooth transition, and 10 s entry start.
+
+Advanced settings control pattern propagation speed (default **3 m/s**), transition width (default **60 m**), persistent angle and entry start. Traveling oscillations reuse seeded, bounded target directions and randomized holds, including multiple targets on the same side of the median. All fronts use the selected propagation speed. Persistent traveling shifts use the explicit angle rather than the uniform scenario's random magnitude. Transition widths are 1–500 m; transitions are smooth, not discontinuous steps.
+
+This is a simplified training model. Horizontal fronts move along the down-course axis independently of boat speed or actual wind speed; streak orientation represents local wind direction and is independent of front orientation. The canvas samples the same field as the physics and draws below the boat and course references. Dashed front guides mark transition **centers**, not sharp edges. Wind history plots observed wind at the moving boat; laylines and finish-gate orientation use wind at the mark. The hindsight search samples the field separately at every candidate boat's position and time.
+
+See [the spatial model](docs/SPATIAL_WIND.md) for equations, numerical limits and validation.
+
 Defaults: 1000 m course; 5 kn boat speed; minimum 45° true wind angle; 5 s stationary tack penalty; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° wind bound. No current, waves, wind-strength variation, polar curve, or apparent-wind model.
 
 ## Architecture
@@ -47,6 +59,7 @@ src/engine/
   optimizer.js   bounded beam search and tack counterfactuals
   scoring.js     route comparison and formatting
 src/views/               course SVG, observed wind history, post-race analysis
+  wind-canvas.js         deterministic streak/front geometry and canvas drawing
 src/race-controller.js   rendering-free player lifecycle and fixed-step clock
 src/main.js              native DOM bindings and animation/worker lifecycle
 src/optimizer.worker.js  native module worker for hindsight calculation
@@ -59,7 +72,7 @@ The view uses SVG's uniform `preserveAspectRatio="xMidYMid meet"` transform: equ
 
 ## Numerical limits
 
-The integrator uses a maximum **0.25 s** step and midpoint wind direction. Playback uses only fixed steps, independent of refresh rate. Tack penalties and finish times may end on a partial step. Finish detection evaluates the rotating gate and uses bisection within a linear movement substep. Movement and rotating-gate crossing therefore remain numerical approximations, not exact continuous-time solutions. Extremely fast externally supplied wind curves are outside the tested generator's range.
+The integrator uses a maximum **0.25 s** outer step. Uniform wind retains midpoint time sampling; traveling wind uses predicted midpoint position/time sampling with smaller integration steps near narrow fronts. Playback uses only fixed outer steps, independent of refresh rate. Tack penalties and finish times may end on a partial step. Finish detection evaluates the rotating gate and uses bisection within a linear movement substep. Movement and rotating-gate crossing therefore remain numerical approximations, not exact continuous-time solutions. Extremely fast externally supplied wind curves are outside the tested generator's range.
 
 The benchmark uses a 4 s coarse search followed by a 2 s search with a 140-state beam and 2 m position cells. It includes hold, tack, gate-aim, and close-hauled actions. Gate aiming targets the center of the finite gate; it does not enumerate every legal bearing-away angle. Its heuristic estimates travel using frozen current wind and is not an admissible bound under future shifts. Pruning, time/space discretization, a finite horizon, and the restricted steering set can all miss better routes. **Best route found numerically; global optimality is not certified.**
 
