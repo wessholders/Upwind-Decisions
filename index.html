@@ -45,8 +45,8 @@
               <svg id="course" class="course-svg" viewBox="-580 -1180 1160 1260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sailing course"></svg>
             </div>
             <div class="course-footer"><span><span class="legend-line blue"></span>You</span><span><span class="legend-line purple"></span>Live computer</span><span id="reference-legend" hidden><span class="legend-line gold"></span>Hindsight</span><span class="scale-note">Equal scale · meters</span></div>
-            <div class="wind-view-controls"><label class="wind-display-control">Wind on water<select id="wind-display"><option value="streaks">Particles &amp; water</option><option value="boundaries">Show feature boundaries</option><option value="hidden">Hidden</option></select></label><label class="vector-control"><input id="wind-vectors" type="checkbox"> Debug wind vectors</label></div>
-            <div class="wind-view-time" id="wind-time">Wind at 0:00</div><div id="wind-legend" class="wind-legend"><span><i class="pressure-puff"></i>Strong puff · denser, faster</span><span><i class="pressure-pocket"></i>Light air · sparser, slower</span></div>
+            <div class="wind-view-controls"><label class="wind-display-control">Wind on water<select id="wind-display"><option value="streaks">Particles &amp; water</option><option value="boundaries">Identify puffs / pockets</option><option value="hidden">Hidden</option></select></label><label class="vector-control"><input id="wind-vectors" type="checkbox"> Debug wind vectors</label></div>
+            <div class="wind-view-time" id="wind-time">Wind at 0:00</div><div id="wind-legend" class="wind-legend" title="Particle ratios are core density targets relative to background; edges blend smoothly."><span><i class="pressure-puff" aria-hidden="true"></i><span><strong>Puff · stronger wind</strong><small>Darker water · 4× particles · faster</small></span></span><span><i class="pressure-pocket" aria-hidden="true"></i><span><strong>Pocket · lighter wind</strong><small>Lighter water · 0.4× particles · slower</small></span></span></div>
           </section>
           <aside class="instrument-panel" aria-label="Sailing instruments and controls">
             <div class="compass"><div class="instrument-label">COMPASS HEADING</div><div class="heading"><span id="heading-value" class="heading-value">315</span><span>°</span></div><div id="tack-label" class="tack-label starboard">STARBOARD TACK</div></div>
@@ -60,7 +60,8 @@
             </div>
             <div class="sailing-controls">
               <button id="tack" type="button" class="tack-button" disabled><span id="tack-button-text">Tack</span><span aria-hidden="true">↗ ↖</span></button>
-              <button id="bear" type="button" class="bear-button" disabled>Bear away to gate</button>
+              <button id="bear" type="button" class="bear-button" aria-pressed="false" aria-describedby="bear-status" disabled>Bear away to mark</button>
+              <p id="bear-status" class="bear-status" role="status" aria-live="polite">Start sailing to enable the mark approach.</p>
               <button id="start" type="button" class="start-button">▶ Start sailing</button>
             </div>
             <label class="playback">Playback speed<select id="playback"><option value="1">1× real time</option><option value="4" selected>4×</option><option value="8">8×</option><option value="16">16×</option></select></label>
@@ -91,6 +92,7 @@
                 <label>Boat pressure response<input name="pressureExponent" type="number" value="0.5" min="0" max="1" step="0.1" required></label>
               </div>
               <p>Puffs and light-air pockets move with their own wind. The favored side has a statistical advantage in pressure and shifts, with 65/35 odds by default. Both you and the reference route use this same field.</p>
+              <p>Outside puffs and pockets, wind stays directly upwind (0° relative to the course). Persistent and oscillating shifts apply inside features, with smooth edges returning to the ambient direction.</p>
               <p>Boat pressure response is a simplified training rule: speed = base boat speed × (local wind / background wind)<sup>response</sup>. The default 0.5 uses a square-root response; 0 keeps boat speed fixed. This is not a calibrated boat polar.</p>
             </div>
             <div class="settings-grid">

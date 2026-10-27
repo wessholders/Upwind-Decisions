@@ -6,8 +6,8 @@ export class WindFeature {
     this.bornTick = tick; this.endTick = Infinity;
     this.positions = [spec.x, spec.y];
   }
-  move(background, config, dt) {
-    const vector = windVector(background + this.shift, this.speedKnots);
+  move(trend, config, dt) {
+    const vector = windVector(trend + this.shift, this.speedKnots);
     this.x += vector.vx * dt * config.translation;
     this.y += vector.vy * dt * config.translation;
     this.positions.push(this.x, this.y);

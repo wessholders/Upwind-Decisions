@@ -24,7 +24,7 @@ describe('changing-wind route search', () => {
     }, 20000);
     it('retains a faster known player route and derives reproducible tack comparisons', { timeout: 20000 }, () => {
         const scenario = createScenario({ ...DEFAULT_CONFIG, courseLength: 100, windMode: 'steady' });
-        const sailingTime = 100 / (5 * KNOT_TO_MPS / Math.sqrt(2));
+        const sailingTime = (100 + scenario.config.boatLength) / (5 * KNOT_TO_MPS / Math.sqrt(2));
         const commands = [{ time: 0, action: 'tack' }, { time: 5 + sailingTime / 2, action: 'tack' }];
         const player = replay(scenario, commands, sailingTime + 20);
         assert.strictEqual(player.finish.finished, true);
@@ -42,9 +42,10 @@ describe('changing-wind route search', () => {
     });
     it('includes a known finished live-computer route as an incumbent', () => {
         const scenario = createScenario({ courseLength: 100, windMode: 'steady' });
-        const sailingTime = 100 / (5 * KNOT_TO_MPS / Math.sqrt(2));
+        const sailingTime = (100 + scenario.config.boatLength) / (5 * KNOT_TO_MPS / Math.sqrt(2));
         const commands = [{ time: 0, action: 'tack' }, { time: 5 + sailingTime / 2, action: 'tack' }];
         const computer = replay(scenario, commands, sailingTime + 20);
+        assert.ok(computer.finish.finished);
         const benchmark = optimize(scenario, undefined, undefined, [{ commands, time: computer.finish.time }]);
         assert.ok(benchmark.route.finish.time <= computer.finish.time + 1e-7);
         assert.deepEqual(replay(scenario, benchmark.route.commands, benchmark.route.finish.time + 1).finish, benchmark.route.finish);

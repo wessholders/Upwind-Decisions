@@ -113,16 +113,70 @@ try {
   await waitFor(`document.getElementById('startup-error')?.hidden === true`);
   assert.equal(await evaluate(`document.getElementById('tack').disabled`), true);
   assert.equal(await evaluate(`document.getElementById('wind-field').value`), 'organic');
+  assert.equal(await evaluate(`document.getElementById('bear').disabled`), true);
+  assert.match(await evaluate(`document.getElementById('bear-status').textContent`), /Start sailing/);
   assert.equal(await evaluate(`document.getElementById('computer-state').textContent`), 'Ready to race');
   const readyWind = await evaluate(`document.getElementById('wind-canvas').toDataURL()`);
   await evaluate(`new Promise(resolve => setTimeout(resolve, 180))`);
   assert.notEqual(await evaluate(`document.getElementById('wind-canvas').toDataURL()`), readyWind, 'The ready racecourse should show flowing particles.');
   await screenshot('trainer-desktop');
+  // Verify the actual canvas output for both wind types on one controlled
+  // scene. Median core tones avoid confusing a particle pixel with water.
+  const contrast = await evaluate(`(async () => {
+    const { createScenario } = await import('./src/engine/wind.js');
+    const { fieldForScenario } = await import('./src/wind/field.js');
+    const { WindFeature } = await import('./src/wind/feature.js');
+    const { FeatureShape } = await import('./src/wind/shape.js');
+    const { seededRandom } = await import('./src/wind/random.js');
+    const { RaceWindLayer } = await import('./src/views/organic-wind.js');
+    const { courseProjection } = await import('./src/views/wind-canvas.js');
+    const scenario = createScenario({ windField: 'organic', windMode: 'steady' });
+    const field = fieldForScenario(scenario);
+    field.active = [
+      new WindFeature({ id: 1, kind: 'puff', x: -240, y: 520, shift: 10, speedKnots: 14, lifetime: 500, shape: new FeatureShape(seededRandom(5), 140, 175) }),
+      new WindFeature({ id: 2, kind: 'pocket', x: 240, y: 520, shift: -10, speedKnots: 6, lifetime: 500, shape: new FeatureShape(seededRandom(8), 140, 175) }),
+    ];
+    field.history = field.active.slice(); field.buckets.clear(); field.indexTick(); field.cachedTime = NaN; field.spawns.nextTime = Infinity;
+    const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+    const layer = new RaceWindLayer(), view = '-500 -1100 1000 1166.6666666667';
+    const metrics = { width: 600, height: 700 }, projection = courseProjection(view, 600, 700);
+    const labels = [], fillText = ctx.fillText.bind(ctx);
+    ctx.fillText = (text, ...args) => { labels.push(text); return fillText(text, ...args); };
+    layer.draw(canvas, scenario, 0, view, 'streaks', metrics);
+    const medianTone = x => {
+      const p = projection.point({ x, y: 520 }), pixels = ctx.getImageData(Math.round(p.x) - 5, Math.round(p.y) - 5, 11, 11).data, values = [];
+      for (let i = 0; i < pixels.length; i += 4) values.push(pixels[i] * 0.2126 + pixels[i+1] * 0.7152 + pixels[i+2] * 0.0722);
+      values.sort((a,b) => a-b); return values[Math.floor(values.length/2)];
+    };
+    const tones = { puff: medianTone(-240), ambient: medianTone(0), pocket: medianTone(240) };
+    const normalLabels = labels.slice(), plainImage = canvas.toDataURL().split(',')[1];
+    const before = JSON.stringify(field.sample(0, 520, 0));
+    layer.draw(canvas, scenario, 0, view, 'boundaries', metrics);
+    return { tones, normalLabels, labels, samePhysics: before === JSON.stringify(field.sample(0, 520, 0)),
+      plainImage, identifiedImage: canvas.toDataURL().split(',')[1] };
+  })()`);
+  assert.ok(contrast.tones.puff < contrast.tones.ambient - 15, 'Puff water must visibly darken.');
+  assert.ok(contrast.tones.pocket > contrast.tones.ambient + 6, 'Pocket water must visibly lighten.');
+  assert.equal(contrast.normalLabels.length, 0);
+  assert.ok(contrast.labels.some(label => label.startsWith('PUFF')) && contrast.labels.some(label => label.startsWith('POCKET')));
+  assert.ok(contrast.samePhysics);
+  await writeFile(new URL('../artifacts.local/wind-contrast-unlabeled.png', import.meta.url), Buffer.from(contrast.plainImage, 'base64'));
+  await writeFile(new URL('../artifacts.local/wind-contrast-identified.png', import.meta.url), Buffer.from(contrast.identifiedImage, 'base64'));
+  delete contrast.plainImage; delete contrast.identifiedImage;
   await click('start');
   await waitFor(`document.getElementById('elapsed').textContent !== '0:00'`);
+  assert.equal(await evaluate(`document.getElementById('bear').disabled`), false);
+  await click('bear');
+  assert.equal(await evaluate(`document.getElementById('bear').getAttribute('aria-pressed')`), 'true');
+  assert.equal(await evaluate(`document.getElementById('bear').dataset.state`), 'armed');
+  assert.match(await evaluate(`document.getElementById('bear-status').textContent`), /Mark approach armed/);
+  await click('bear');
+  assert.equal(await evaluate(`document.getElementById('bear').getAttribute('aria-pressed')`), 'false');
   assert.ok(await evaluate(`document.getElementById('computer-log').textContent.includes('Tack')`));
   assert.ok(await evaluate(`document.querySelector('#course path[stroke="#855ab1"]') !== null`));
   await click('tack');
+  assert.equal(await evaluate(`document.getElementById('bear').disabled`), true);
+  assert.match(await evaluate(`document.getElementById('bear-status').textContent`), /tack is complete/);
   assert.equal(await evaluate(`document.getElementById('speed-value').textContent`), '0.0');
   assert.equal(await evaluate(`document.getElementById('tack-count').textContent`), '1');
   await click('start');
@@ -220,9 +274,64 @@ try {
   assert.ok(await evaluate(`Array.from(document.querySelectorAll('#results tbody th')).some(th => th.textContent === 'Live computer')`));
   assert.equal(await evaluate(`document.getElementById('inspection-banner').hidden`), true);
   await screenshot('trainer-finished');
+  // Sail slightly beyond the clearance-safe mark layline, then use the real
+  // button for a small bear-away and finish beside the mark, not gate center.
+  const bearingResult = await evaluate(`(() => {
+    document.getElementById('retry').click();
+    const contrast = document.querySelector('[name="windContrast"]'); contrast.value = 0;
+    contrast.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('settings-form').requestSubmit();
+    document.getElementById('start').click(); document.getElementById('tack').click();
+    let frames = 0;
+    for (; frames < 1600; frames++) {
+      const position = document.querySelector('#course .player-boat').transform.baseVal.getItem(0).matrix;
+      const y = -position.f;
+      if (y >= 54 && !document.getElementById('tack').disabled) break;
+      window.__stepQA(62.5);
+    }
+    document.getElementById('tack').click();
+    for (let i = 0; i < 30 && document.getElementById('tack').disabled; i++) window.__stepQA(62.5);
+    const enabled = !document.getElementById('bear').disabled, headingBefore = Number(document.getElementById('heading-value').textContent);
+    document.getElementById('bear').click();
+    const headingAfter = Number(document.getElementById('heading-value').textContent), state = document.getElementById('bear').dataset.state;
+    for (let i = 0; i < 800 && document.getElementById('status').textContent !== 'LEG COMPLETE'; i++) window.__stepQA(62.5);
+    const finishPosition = document.querySelector('#course .player-boat').transform.baseVal.getItem(0).matrix;
+    return { enabled, headingBefore, headingAfter, state, finishOffsetMeters: -finishPosition.f - 100,
+      finished: document.getElementById('status').textContent === 'LEG COMPLETE',
+      tacks: document.getElementById('tack-count').textContent };
+  })()`);
+  assert.ok(bearingResult.enabled); assert.equal(bearingResult.state, 'active');
+  assert.equal(bearingResult.headingBefore, 315); assert.equal(bearingResult.headingAfter, 313);
+  assert.ok(bearingResult.finishOffsetMeters > 3 && bearingResult.finishOffsetMeters < 6);
+  assert.ok(bearingResult.finished); assert.equal(bearingResult.tacks, '2');
+  // A fast, nearly reaching approach previously tightened toward the buoy
+  // after its closest point. Retain the displayed target until the finish.
+  const reachingResult = await evaluate(`(() => {
+    document.getElementById('retry').click();
+    const speed = document.querySelector('[name="speedKnots"]'); speed.value = 20;
+    speed.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('settings-form').requestSubmit();
+    document.getElementById('start').click(); document.getElementById('tack').click();
+    const position = () => document.querySelector('#course .player-boat').transform.baseVal.getItem(0).matrix;
+    for (let i = 0; i < 500 && -position().f < 57.5; i++) window.__stepQA(62.5);
+    document.getElementById('tack').click();
+    for (let i = 0; i < 500 && (document.getElementById('tack').disabled || position().e > 25); i++) window.__stepQA(62.5);
+    const before = { x: position().e, y: -position().f };
+    document.getElementById('bear').click();
+    const targets = [];
+    for (let i = 0; i < 500 && document.getElementById('status').textContent !== 'LEG COMPLETE'; i++) {
+      const guide = document.querySelector('.mark-approach-guide');
+      if (guide) targets.push(Number(guide.getAttribute('d').split(' L')[1].split(',')[1]));
+      window.__stepQA(62.5);
+    }
+    return { before, finished: document.getElementById('status').textContent === 'LEG COMPLETE',
+      targets: targets.length, targetDriftMeters: Math.max(...targets) - Math.min(...targets),
+      finishOffsetMeters: -position().f - 100, tacks: document.getElementById('tack-count').textContent };
+  })()`);
+  assert.ok(reachingResult.finished); assert.equal(reachingResult.tacks, '2');
+  assert.ok(reachingResult.targets > 2); assert.ok(reachingResult.targetDriftMeters < 1e-6);
+  assert.ok(reachingResult.finishOffsetMeters > 3 && reachingResult.finishOffsetMeters < 6);
   await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: injection.identifier });
   assert.equal(errors.length, 0, JSON.stringify(errors));
   console.log(JSON.stringify({ desktop: '1440×1100', mobile: '390×844', runtimeErrors: errors.length,
-    controls: 'sailing and live opponent, pause, retry, settings, complete leg, hindsight explanations, tack-time inspection, computer finish comparison', rendererCheck, workerResult, raceResult,
-    screenshots: 'artifacts.local/wind-*.png and trainer-*.png' }, null, 2));
+    controls: 'sailing and live opponent, pause, retry, settings, complete leg, hindsight explanations, tack-time inspection, computer finish comparison, armed and active gate aiming', rendererCheck, contrast, workerResult, raceResult, bearingResult,
+    reachingResult, screenshots: 'artifacts.local/wind-*.png and trainer-*.png' }, null, 2));
 } finally { socket.close(); }

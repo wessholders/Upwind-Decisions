@@ -1,6 +1,6 @@
 # Live computer and hindsight reference
 
-Both boats use the player's authoritative wind field, pressure response, allowed headings, tack penalty, gate-aim steering and finish crossing. Their information and decision methods differ.
+Both boats use the player's authoritative wind field, pressure response, allowed headings, tack penalty, close-mark approach steering and clearance-safe finish crossing. Their information and decision methods differ. See [mark approach geometry](MARK_APPROACH.md).
 
 ## Live computer (purple)
 

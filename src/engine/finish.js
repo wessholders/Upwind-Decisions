@@ -1,4 +1,4 @@
-import { cross, direction, dot, interpolate, subtract } from './geometry.js';
+import { cross, direction, dot, interpolate, subtract, markContactClearance, distanceToSegment } from './geometry.js';
 import { windAtPosition } from './wind.js';
 export const windAtMark = (scenario, time) => windAtPosition(scenario, 0, scenario.config.courseLength, time);
 export function gateEnd(scenario, time) {
@@ -28,8 +28,13 @@ export function finishFraction(scenario, from, to, startTime, dt, tack) {
             const u = (low + high) / 2;
             const along = dot(subtract(interpolate(from, to, u), mark), direction(windAtMark(scenario, startTime + dt * u)));
             const length = scenario.config.boatLength * scenario.config.gateBoatLengths;
-            if (along >= -1e-7 && along <= length + 1e-7)
-                return u;
+            if (along >= -1e-7 && along <= length + 1e-7) {
+                const passDistance = distanceToSegment(mark, from, interpolate(from, to, u));
+                // Check the course actually sailed, ending at the crossing.
+                // Extending its line backward can invent a buoy contact after
+                // the boat has already rounded safely on a curved approach.
+                if (passDistance >= markContactClearance(scenario.config.boatLength) - 1e-7) return u;
+            }
         }
         previous = next;
     }

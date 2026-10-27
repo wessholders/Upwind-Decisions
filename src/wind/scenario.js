@@ -12,6 +12,8 @@ export class ScenarioGenerator {
       this.knots.push({ time: start, direction: 0 }, { time: start + between(this.random, 120, 240) * config.tempo, direction: angle });
     }
   }
+  // Historical API name: the organic field applies this directional trend
+  // inside features only. Open-water ambient wind remains course-relative 0°.
   background(time) {
     const knots = this.knots;
     if (this.config.regime === 'oscillating') {

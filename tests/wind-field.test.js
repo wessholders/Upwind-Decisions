@@ -27,6 +27,34 @@ const fixture = (features, config = {}) => {
 };
 
 describe('authoritative organic wind field', () => {
+  it('keeps ambient wind exactly upwind in every regime, even after the regime trend shifts', () => {
+    for (const regime of ['steady', 'persistent', 'oscillating']) {
+      const field = new WindField({ regime, initialFeatures: 0, frequency: 0 });
+      if (regime !== 'steady') assert.notEqual(field.scenario.background(1000), 0);
+      for (const time of [0, 60, 200, 500, 1000]) for (const [x, y] of [[0, 180], [-300, 600], [300, 900]]) {
+        const wind = field.sample(x, y, time);
+        assert.equal(wind.kind, 'background'); assert.equal(wind.influence, 0);
+        assert.equal(wind.direction, 0); assert.equal(wind.backgroundDirection, 0);
+        assert.ok(wind.vx === 0); assert.ok(wind.vy < 0); near(wind.speedKnots, field.config.windKnots);
+      }
+    }
+  });
+  it('contains directional shifts within the organic boundary and blends smoothly back to zero', () => {
+    const f = feature({ y: 3000 });
+    const field = fixture([f], { regime: 'persistent', width: 2000 });
+    const time = 300, p = field.featuresAt(time).find(p => p.feature.id === f.id);
+    assert.ok(p); assert.notEqual(field.scenario.background(time), 0);
+    const core = field.sample(p.x, p.y, time);
+    const expected = (field.scenario.background(time) + f.shift + 360) % 360;
+    near(core.direction, expected); near(core.speedKnots, f.speedKnots);
+    for (let k = 0; k < 16; k++) {
+      const edge = f.shape.point(k / 16 * 2 * Math.PI);
+      const outside = field.sample(p.x + edge.x * 1.001, p.y + edge.y * 1.001, time);
+      assert.equal(outside.kind, 'background'); assert.equal(outside.direction, 0);
+      const fringe = field.sample(p.x + edge.x * 0.999, p.y + edge.y * 0.999, time);
+      assert.ok(fringe.influence > 0); near(Math.min(fringe.direction, 360 - fringe.direction), 0, 0.001);
+    }
+  });
   it('reproduces history and samples across seeds, arbitrary query order and structured cloning', () => {
     for (const seed of [1, 42, 2941]) {
       const a = new WindField({ seed }), b = new WindField(structuredClone({ seed }));

@@ -1,7 +1,7 @@
 import { advance, applyAction, initialBoat } from './physics.js';
 import { windSampleAtPosition } from './wind.js';
 import { gateEnd } from './finish.js';
-import { direction, dot, headingTo, radians, signedAngle, validHeading } from './geometry.js';
+import { direction, dot, radians, signedAngle, closestMarkApproach, markApproachClearance, markContactClearance, distanceToSegment } from './geometry.js';
 import { KNOT_TO_MPS } from './config.js';
 
 const DECISION_INTERVAL = 2;
@@ -24,9 +24,11 @@ export function observeCurrentWind(scenario, boat) {
   }
   const wind = windSampleAtPosition(scenario, boat.position.x, boat.position.y, boat.time);
   return { time: boat.time, position: { ...boat.position }, tack: boat.tack, mode: boat.mode,
+    markAimDistance: boat.markAimDistance ?? null,
     penaltyRemaining: boat.penaltyRemaining, wind: { direction: wind.direction, speedKnots: wind.speedKnots, kind: wind.kind },
     gate: { start: { x: 0, y: c.courseLength }, end: gateEnd(scenario, boat.time) },
     minAngle: c.minAngle, tackPenalty: c.tackPenalty, baseSpeedKnots: c.speedKnots,
+    boatLength: c.boatLength,
     backgroundWindKnots: scenario.organicWind?.windKnots ?? c.backgroundWindKnots ?? 10,
     pressureExponent: scenario.organicWind ? c.pressureExponent ?? 0.5 : 0,
     map: { bounds, cols, rows, cells } };
@@ -44,12 +46,17 @@ export function sampleObservedMap(observation, position) {
 }
 
 const otherTack = tack => tack === 'starboard' ? 'port' : 'starboard';
-const gateCenter = o => ({ x: (o.gate.start.x + o.gate.end.x) / 2, y: (o.gate.start.y + o.gate.end.y) / 2 });
+const markEndGoal = o => {
+  const dx = o.gate.end.x - o.gate.start.x, dy = o.gate.end.y - o.gate.start.y, length = Math.hypot(dx, dy);
+  const clearance = markApproachClearance(o.boatLength);
+  return { x: o.gate.start.x + dx / length * clearance, y: o.gate.start.y + dy / length * clearance };
+};
+const approachFor = (o, position, tack, wind, preferredDistance = null) => closestMarkApproach(position, wind.direction, tack,
+  o.minAngle, o.gate.start, o.gate.end, markApproachClearance(o.boatLength), preferredDistance);
 const observedSpeed = (o, wind) => o.baseSpeedKnots * Math.max(0.1, wind.speedKnots / o.backgroundWindKnots) ** o.pressureExponent;
 function predictedHeading(o, position, tack, mode, wind) {
-  const direct = headingTo(position, gateCenter(o));
-  return mode === 'gate' && validHeading(direct, wind.direction, tack, o.minAngle)
-    ? direct : wind.direction + (tack === 'starboard' ? -o.minAngle : o.minAngle);
+  const approach = mode === 'gate' ? approachFor(o, position, tack, wind, o.markAimDistance) : null;
+  return approach ? approach.heading : wind.direction + (tack === 'starboard' ? -o.minAngle : o.minAngle);
 }
 
 // A short forecast through a FROZEN current map. This policy has no way to ask
@@ -60,10 +67,13 @@ export function forecastObservedOption(o, action) {
   const position = { ...o.position };
   const gateVector = { x: o.gate.end.x - o.gate.start.x, y: o.gate.end.y - o.gate.start.y };
   let penalty = action === 'tack' ? o.tackPenalty : o.penaltyRemaining, pressure = 0;
+  let markAimDistance = mode === 'gate' && action !== 'bear' ? o.markAimDistance : null;
   for (let elapsed = 0; elapsed < FORECAST_SECONDS; elapsed += 2) {
     const wind = sampleObservedMap(o, position); pressure += wind.speedKnots * 2;
     const stopped = Math.min(2, penalty); penalty -= stopped;
-    const vector = direction(predictedHeading(o, position, tack, mode, wind));
+    const approach = mode === 'gate' ? approachFor(o, position, tack, wind, markAimDistance) : null;
+    markAimDistance = approach?.distanceFromMark ?? null;
+    const vector = direction(approach?.heading ?? wind.direction + (tack === 'starboard' ? -o.minAngle : o.minAngle));
     const distance = observedSpeed(o, wind) * KNOT_TO_MPS * (2 - stopped);
     const previous = { ...position };
     position.x += vector.x * distance; position.y += vector.y * distance;
@@ -73,7 +83,8 @@ export function forecastObservedOption(o, action) {
       const fraction = -sideBefore / (sideAfter - sideBefore);
       const finish = { x: previous.x + (position.x - previous.x) * fraction, y: previous.y + (position.y - previous.y) * fraction };
       const along = ((finish.x - o.gate.start.x) * gateVector.x + (finish.y - o.gate.start.y) * gateVector.y) / (gateVector.x ** 2 + gateVector.y ** 2);
-      if (along >= 0 && along <= 1) {
+      const passDistance = distanceToSegment(o.gate.start, previous, finish);
+      if (along >= 0 && along <= 1 && passDistance >= markContactClearance(o.boatLength)) {
         const actualStep = stopped + (2 - stopped) * fraction, total = elapsed + actualStep;
         return { action, estimatedSeconds: total, averageWindKnots: (pressure - wind.speedKnots * (2 - actualStep)) / total,
           position: finish, tack, predictedFinish: true };
@@ -81,7 +92,8 @@ export function forecastObservedOption(o, action) {
     }
   }
   const wind = sampleObservedMap(o, position), up = direction(wind.direction), right = { x: up.y, y: -up.x };
-  const remaining = { x: gateCenter(o).x - position.x, y: gateCenter(o).y - position.y };
+  const goal = approachFor(o, position, 'starboard', wind)?.target ?? markEndGoal(o);
+  const remaining = { x: goal.x - position.x, y: goal.y - position.y };
   const along = dot(remaining, up), across = dot(remaining, right), speed = Math.max(0.1, observedSpeed(o, wind) * KNOT_TO_MPS);
   const time = Math.max(Math.hypot(remaining.x, remaining.y) / speed,
     along / (speed * Math.cos(radians(o.minAngle))), Math.abs(across) / (speed * Math.sin(radians(o.minAngle))));
@@ -97,15 +109,16 @@ export function forecastObservedOption(o, action) {
 export function decideLiveComputer(observation, memory = {}) {
   const o = observation;
   if (o.penaltyRemaining > 1e-8) return { action: 'hold', reason: 'Completing the tack penalty.', options: [] };
-  const center = gateCenter(o), toward = { x: center.x - o.position.x, y: center.y - o.position.y };
+  const mark = markEndGoal(o), toward = { x: mark.x - o.position.x, y: mark.y - o.position.y };
   const windUp = direction(o.wind.direction), right = { x: windUp.y, y: -windUp.x };
   const up = dot(toward, windUp), across = dot(toward, right);
-  const direct = headingTo(o.position, center);
-  if (o.tack === 'starboard' && validHeading(direct, o.wind.direction, o.tack, o.minAngle) && toward.x < 0 &&
-      Math.abs(signedAngle(direct - predictedHeading(o, o.position, o.tack, o.mode, o.wind))) > 0.1)
-    return { action: 'bear', reason: 'The gate center is reachable legally on starboard; aiming at the finish.', options: [] };
-  if (o.tack === 'port' && across <= -Math.max(0, up) * Math.tan(radians(o.minAngle)) + 3)
-    return { action: 'tack', reason: 'Reached the starboard layline in the current wind; tacking for the required finish approach.', options: [] };
+  const approach = approachFor(o, o.position, o.tack, o.wind, o.mode === 'gate' ? o.markAimDistance : null);
+  if (o.tack === 'starboard' && approach && approach.target.x < o.position.x &&
+      Math.abs(signedAngle(approach.heading - predictedHeading(o, o.position, o.tack, o.mode, o.wind))) > 0.1)
+    return { action: 'bear', reason: 'A legal close rounding is available; bearing toward the mark with hull clearance and leaving it to port.', options: [] };
+  const starboardApproach = o.tack === 'port' ? approachFor(o, o.position, 'starboard', o.wind) : null;
+  if (starboardApproach && starboardApproach.target.x < o.position.x)
+    return { action: 'tack', reason: 'Reached a clearance-safe starboard approach to the mark; tacking to leave it to port and cross the windward line.', options: [] };
   const options = [forecastObservedOption(o, 'hold')];
   const settled = o.time - (memory.lastTackTime ?? -Infinity) >= Math.max(12, o.tackPenalty + 4);
   if (settled) options.push(forecastObservedOption(o, 'tack'));

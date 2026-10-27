@@ -1,6 +1,6 @@
 import { fieldForScenario } from '../wind/field.js';
 import { ParticleSystem } from '../wind/particles.js';
-import { WaterRenderer, drawFeatureOutlines, drawParticleTrails, drawDebugVectors } from '../wind/renderer.js';
+import { WaterRenderer, drawFeatureOutlines, drawParticleTrails, drawDebugVectors, WIND_PALETTES } from '../wind/renderer.js';
 import { clamp } from '../wind/config.js';
 import { courseProjection } from './wind-canvas.js';
 
@@ -31,9 +31,13 @@ export class RaceWindLayer {
     while (remaining > 1e-8) { const dt = Math.min(0.025, remaining); this.particles.update(dt, time); remaining -= dt; }
     ctx.save(); ctx.beginPath();
     ctx.rect(projection.startX, projection.startY, projection.spanX * projection.scale, projection.spanY * projection.scale); ctx.clip();
+    ctx.fillStyle = WIND_PALETTES.light.water;
+    ctx.fillRect(projection.startX, projection.startY, projection.spanX * projection.scale, projection.spanY * projection.scale);
     this.water.draw(ctx, this.field, time, camera);
-    if (display === 'boundaries') drawFeatureOutlines(ctx, this.field, time, camera, 'light');
     drawParticleTrails(ctx, this.field, this.particles, time, camera, 'light');
+    if (display === 'boundaries') drawFeatureOutlines(ctx, this.field, time, camera, 'light', {
+      left: projection.startX, right: projection.startX + projection.spanX * projection.scale,
+      top: projection.startY, bottom: projection.startY + projection.spanY * projection.scale });
     if (vectors) drawDebugVectors(ctx, this.field, time, camera, projection.bounds, 'light');
     ctx.restore();
   }

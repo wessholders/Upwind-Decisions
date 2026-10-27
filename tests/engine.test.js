@@ -140,12 +140,13 @@ describe('finite rotating finish gate', () => {
 describe('analytical baselines and optimizer legality', () => {
     it('matches the independent steady-wind time and distance with two tacks', () => {
         const s = scenario();
-        const sailingTime = 1000 / (5 * KNOT_TO_MPS * Math.cos(Math.PI / 4));
+        const safeCrossingHeight = 1000 + s.config.boatLength;
+        const sailingTime = safeCrossingHeight / (5 * KNOT_TO_MPS * Math.cos(Math.PI / 4));
         const first = 10;
         const route = replay(s, [{ time: first, action: 'tack' }, { time: first + 5 + sailingTime / 2, action: 'tack' }], sailingTime + 20);
         assert.strictEqual(route.finish.finished, true);
         closeTo(route.finish.time, sailingTime + 10, 7);
-        closeTo(route.finish.distance, 1000 * Math.sqrt(2), 6);
+        closeTo(route.finish.distance, safeCrossingHeight * Math.sqrt(2), 6);
         closeTo(route.finish.penaltyTime, 10, 8);
     });
     it('finds and reproduces a legal route near the analytical steady-wind optimum', { timeout: 20000 }, () => {

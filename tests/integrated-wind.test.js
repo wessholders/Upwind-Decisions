@@ -10,10 +10,37 @@ import { windHistoryView } from '../src/views/wind-history.js';
 import { RaceWindLayer } from '../src/views/organic-wind.js';
 import { courseProjection } from '../src/views/wind-canvas.js';
 import { DEFAULT_CONFIG } from '../src/engine/config.js';
+import { observeCurrentWind } from '../src/engine/live-computer.js';
+import { windAtMark } from '../src/engine/finish.js';
 
 const near = (a, b, e = 1e-7) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
 
 describe('organic wind in the decision trainer', () => {
+  it('keeps a gate-local shift out of the boat wind and clear water elsewhere on the course', () => {
+    const scenario = createScenario({ windField: 'organic' }), time = 480;
+    const boat = { ...initialBoat(), time, position: { x: 0, y: 300 } };
+    assert.ok(Math.abs(windAtMark(scenario, time)) > 8);
+    assert.equal(windSampleAtPosition(scenario, 0, 300, time).kind, 'background');
+    assert.equal(windAtPosition(scenario, 0, 300, time), 0);
+    near(sailingHeading(boat, scenario), -45);
+    const observation = observeCurrentWind(scenario, boat);
+    assert.equal(observation.wind.direction, 0);
+    assert.ok(Math.abs(observation.gate.end.x) > 10);
+  });
+  it('gives the player and live computer zero-degree wind outside features at late race times', () => {
+    for (const windMode of ['persistent', 'oscillating']) {
+      const scenario = createScenario({ windField: 'organic', windMode });
+      const field = fieldForScenario(scenario);
+      const x = scenario.organicWind.width * 2, y = 500, time = 500;
+      assert.equal(field.sample(x, y, time).kind, 'background');
+      assert.equal(windAtPosition(scenario, x, y, time), 0);
+      assert.equal(windSampleAtPosition(scenario, x, y, time).direction, 0);
+      const boat = { ...initialBoat(), position: { x, y }, time };
+      assert.equal(observeCurrentWind(scenario, boat).wind.direction, 0);
+      near(sailingHeading(boat, scenario), -45);
+      near(sailingHeading({ ...boat, tack: 'port' }, scenario), 45);
+    }
+  });
   it('opens the actual trainer with organic wind and carries race settings into its field', () => {
     const trainer = createTrainer();
     assert.equal(trainer.state.scenario.config.windField, 'organic');
@@ -92,6 +119,7 @@ describe('organic wind in the decision trainer', () => {
     // Node, without coupling the test to their individual canvas operations.
     const originalDocument = globalThis.document;
     const context = new Proxy({}, { get: (target, key) => target[key] || (() => {}), set: (target, key, value) => { target[key] = value; return true; } });
+    context.measureText = text => ({ width: text.length * 6 });
     const offscreen = { width: 0, height: 0, getContext: () => ({ createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData() {} }) };
     globalThis.document = { createElement: () => offscreen };
     try {

@@ -30,8 +30,8 @@ export class WindField {
     const goal = Math.ceil(time / WIND_STEP) + 1;
     while (this.tick < goal) {
       this.tick++;
-      const t = this.tick * WIND_STEP, background = this.scenario.background(t - WIND_STEP / 2);
-      for (const f of this.active) f.move(background, this.config, WIND_STEP);
+      const t = this.tick * WIND_STEP, trend = this.scenario.background(t - WIND_STEP / 2);
+      for (const f of this.active) f.move(trend, this.config, WIND_STEP);
       this.active = this.active.filter(f => {
         const expired = t >= f.bornTick * WIND_STEP + f.lifetime || f.y + f.shape.bound < -60 || Math.abs(f.x) - f.shape.bound > this.config.width;
         if (expired) f.endTick = this.tick;
@@ -57,8 +57,10 @@ export class WindField {
   }
   sample(x, y, time) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('Wind position must be finite.');
-    const features = this.featuresAt(time), base = this.scenario.background(time);
-    const background = windVector(base, this.config.windKnots);
+    const features = this.featuresAt(time), trend = this.scenario.background(time);
+    // The course's ambient wind always comes directly from upwind. Regime
+    // shifts affect feature interiors and their movement, never open water.
+    const background = windVector(0, this.config.windKnots);
     let weight = 0, fx = 0, fy = 0, strongest = 0, kind = 'background';
     for (const p of features) {
       if (Math.abs(x - p.x) > p.shape.bound || Math.abs(y - p.y) > p.shape.bound) continue;
@@ -69,7 +71,7 @@ export class WindField {
       if (kind === 'puff' && f.kind === 'pocket') continue;
       if (kind === 'pocket' && f.kind === 'puff') { weight = 0; fx = 0; fy = 0; strongest = 0; }
       kind = f.kind;
-      const vector = windVector(base + f.shift, f.speedKnots);
+      const vector = windVector(trend + f.shift, f.speedKnots);
       weight += influence; fx += vector.vx * influence; fy += vector.vy * influence;
       strongest = Math.max(strongest, influence);
     }
@@ -78,7 +80,7 @@ export class WindField {
     const vx = weight ? background.vx * (1 - strongest) + fx / weight * strongest : background.vx;
     const vy = weight ? background.vy * (1 - strongest) + fy / weight * strongest : background.vy;
     return { direction: bearing(Math.atan2(-vx, -vy) * 180 / Math.PI), speedKnots: Math.hypot(vx, vy) / KNOT,
-      vx, vy, influence: strongest, kind, backgroundDirection: bearing(base) };
+      vx, vy, influence: strongest, kind, backgroundDirection: 0 };
   }
 }
 

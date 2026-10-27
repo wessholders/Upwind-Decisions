@@ -1,7 +1,7 @@
 import { createTrainer } from './race-controller.js';
 import { DEFAULT_CONFIG } from './engine/config.js';
 import { normalize } from './engine/geometry.js';
-import { canBearAway, compassHeading, sailingSpeedKnots } from './engine/physics.js';
+import { compassHeading, sailingSpeedKnots } from './engine/physics.js';
 import { formatTime } from './engine/scoring.js';
 import { windAtPosition, windSampleAtPosition } from './engine/wind.js';
 import { courseView } from './views/course.js';
@@ -10,10 +10,11 @@ import { resultsView } from './views/results.js';
 import { drawWindCanvas } from './views/wind-canvas.js';
 import { RaceWindLayer } from './views/organic-wind.js';
 import { computerLogView } from './views/computer.js';
+import { bearControlView } from './views/bear-control.js';
 
 const trainer = createTrainer();
 const { state } = trainer;
-const ids = ['startup-error', 'wind-mode', 'difficulty', 'wind-field', 'favored-side', 'wind-display', 'wind-vectors', 'wind-canvas', 'local-wind-speed', 'wind-pressure', 'organic-settings', 'wind-legend', 'traveling-demo', 'status-dot', 'status', 'full-course', 'follow-boat', 'course', 'reference-legend', 'heading-value', 'tack-label', 'true-wind', 'wind-shift', 'elapsed', 'distance-value', 'tack-count', 'speed-value', 'tack', 'tack-button-text', 'bear', 'start', 'playback', 'instrument-hint', 'new-wind', 'retry', 'toggle-wind', 'results', 'error', 'wind-history', 'wind-chart', 'settings-form', 'scenario-label', 'computer-state', 'computer-reason', 'computer-log', 'inspection-banner', 'inspection-label', 'inspection-return', 'wind-time'];
+const ids = ['startup-error', 'wind-mode', 'difficulty', 'wind-field', 'favored-side', 'wind-display', 'wind-vectors', 'wind-canvas', 'local-wind-speed', 'wind-pressure', 'organic-settings', 'wind-legend', 'traveling-demo', 'status-dot', 'status', 'full-course', 'follow-boat', 'course', 'reference-legend', 'heading-value', 'tack-label', 'true-wind', 'wind-shift', 'elapsed', 'distance-value', 'tack-count', 'speed-value', 'tack', 'tack-button-text', 'bear', 'bear-status', 'start', 'playback', 'instrument-hint', 'new-wind', 'retry', 'toggle-wind', 'results', 'error', 'wind-history', 'wind-chart', 'settings-form', 'scenario-label', 'computer-state', 'computer-reason', 'computer-log', 'inspection-banner', 'inspection-label', 'inspection-return', 'wind-time'];
 const ui = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
 let frame = 0;
 let previousTime = 0;
@@ -71,20 +72,22 @@ function render(includeWind = true) {
   ui['true-wind'].textContent = compass(normalize(scenario.config.baseline + wind));
   ui['wind-shift'].textContent = `${wind >= 0 ? '+' : ''}${wind.toFixed(1)}°`;
   ui['local-wind-speed'].textContent = `${local.speedKnots.toFixed(1)} kn`;
-  ui['wind-pressure'].textContent = local.kind === 'puff' ? 'STRONG PUFF' : local.kind === 'pocket' ? 'LIGHT AIR' : 'BACKGROUND';
+  ui['wind-pressure'].textContent = local.kind === 'puff' ? 'STRONG PUFF' : local.kind === 'pocket' ? 'LIGHT-AIR POCKET' : 'BACKGROUND';
   ui.elapsed.textContent = formatTime(viewedBoat.time);
   ui['distance-value'].textContent = viewedBoat.distance.toFixed(0);
   ui['tack-count'].textContent = viewedBoat.tacks;
   ui['speed-value'].textContent = viewedBoat.penaltyRemaining > 1e-8 || viewedBoat.finished ? '0.0' : sailingSpeedKnots({ ...viewedBoat, time }, scenario).toFixed(1);
   ui.tack.disabled = !active || stopped;
   ui['tack-button-text'].textContent = stopped ? `Tacking · ${boat.penaltyRemaining.toFixed(1)} s` : 'Tack';
-  ui.bear.disabled = !active || stopped || (boat.mode === 'close' && !canBearAway(boat, scenario));
-  ui.bear.textContent = boat.mode === 'gate' ? 'Return close-hauled' : 'Bear away to gate';
+  const bear = bearControlView(state);
+  ui.bear.disabled = bear.disabled; ui.bear.textContent = bear.label;
+  ui.bear.setAttribute('aria-pressed', String(bear.pressed)); ui.bear.dataset.state = bear.state;
+  ui['bear-status'].textContent = bear.description; ui['bear-status'].dataset.state = bear.state;
   ui.start.disabled = Boolean(state.inspection) || (state.phase === 'finished' && !computerActive());
   ui.start.textContent = state.phase === 'finished' ? (state.computerPaused ? '▶ Resume computer' : computerActive() ? 'Ⅱ Pause computer' : 'Leg complete') : state.phase === 'sailing' ? 'Ⅱ Pause' : state.phase === 'paused' ? '▶ Resume' : '▶ Start sailing';
   ui['instrument-hint'].textContent = state.inspection ? `Viewing the reference just before tack ${state.inspection.number}. The field and instruments show that decision's time and location.` : state.phase === 'ready'
     ? 'Start on starboard. Tack when you choose. Cross the dark gate right to left on starboard to finish.'
-    : boat.mode === 'gate' ? 'Aiming at gate center whenever legal. If the wind closes the angle, the boat returns to close-hauled.'
+    : boat.mode === 'gate' ? 'Aim close to the windward mark, leaving it to port on the finish approach. Steering respects hull clearance and the no-go angle; a tack cancels mark aiming.'
       : 'The boat follows the wind automatically. You choose when to tack.';
   ui['reference-legend'].hidden = !state.benchmark?.route;
   ui['wind-history'].hidden = !state.showWind;
