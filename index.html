@@ -89,16 +89,15 @@
                 <label>Typical patch width (BL)<input name="windSizeBL" type="number" value="35" min="15" max="75" step="5" required></label>
                 <label>Background wind (kn)<input name="backgroundWindKnots" type="number" value="10" min="1" max="30" step="0.5" required></label>
                 <label>Wind-speed contrast (%)<input name="windContrast" type="number" value="30" min="0" max="70" step="5" required></label>
-                <label>Boat pressure response<input name="pressureExponent" type="number" value="0.5" min="0" max="1" step="0.1" required></label>
               </div>
               <p>Puffs and light-air pockets move with their own wind. The favored side has a statistical advantage in pressure and shifts, with 65/35 odds by default. Both you and the reference route use this same field.</p>
               <p>Outside puffs and pockets, wind stays directly upwind (0° relative to the course). Persistent and oscillating shifts apply inside features, with smooth edges returning to the ambient direction.</p>
-              <p>Boat pressure response is a simplified training rule: speed = base boat speed × (local wind / background wind)<sup>response</sup>. The default 0.5 uses a square-root response; 0 keeps boat speed fixed. This is not a calibrated boat polar.</p>
+              <p>Boat speed follows a provisional main + jib polar using local wind strength and true wind angle, with gradual acceleration and deceleration. Puffs and pockets change that target. No spinnaker or automatic sail changes are modeled.</p>
             </div>
             <div class="settings-grid">
               <label>Course length (m)<input name="courseLength" type="number" value="1000" min="100" max="5000" step="100" required></label>
               <label>Baseline wind from (°)<input name="baseline" type="number" value="0" min="0" max="359" required></label>
-              <label>Base boat speed (kn)<input name="speedKnots" type="number" value="5" min="1" max="20" step="0.5" required></label>
+              <label>Polar speed scale<input name="speedScale" type="number" value="1" min="0.1" max="5" step="0.1" required></label>
               <label>Minimum true wind angle (°)<input name="minAngle" type="number" value="45" min="30" max="60" required></label>
               <label>Tack turn (s)<input name="tackPenalty" type="number" value="4.5" min="0" max="30" step="0.5" required></label>
               <label>Maximum individual shift (±°)<input name="maxShift" type="number" value="15" min="0" max="30" required></label>

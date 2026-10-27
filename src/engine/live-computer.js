@@ -3,7 +3,8 @@ import { createTack, turning, recoveryRemaining, turnHeading, maneuverSpeed, tac
 import { windSampleAtPosition } from './wind.js';
 import { gateEnd } from './finish.js';
 import { direction, dot, radians, signedAngle, closestMarkApproach, markApproachClearance, markContactClearance, distanceToSegment } from './geometry.js';
-import { KNOT_TO_MPS, EXPERT_TACK } from './config.js';
+import { KNOT_TO_MPS, EXPERT_TACK, STEP } from './config.js';
+import { performanceTarget, performanceSpeed, speedResponse, usesPolar, referenceSpeedKnots } from './performance.js';
 
 const DECISION_INTERVAL = 2;
 const FORECAST_SECONDS = 60;
@@ -30,11 +31,12 @@ export function observeCurrentWind(scenario, boat) {
     heading: sailingHeading(boat, scenario), speedKnots: sailingSpeedKnots(boat, scenario),
     penaltyRemaining: boat.penaltyRemaining, wind: { direction: wind.direction, speedKnots: wind.speedKnots, kind: wind.kind },
     gate: { start: { x: 0, y: c.courseLength }, end: gateEnd(scenario, boat.time) },
-    minAngle: c.minAngle, tackPenalty: c.tackPenalty, baseSpeedKnots: c.speedKnots,
+    minAngle: c.minAngle, tackPenalty: c.tackPenalty,
     tackMinSpeedFraction: c.tackMinSpeedFraction, tackRecoverySeconds: c.tackRecoverySeconds,
+    performance: { performanceModel: c.performanceModel, boatProfile: c.boatProfile, speedScale: c.speedScale,
+      minAngle: c.minAngle, windField: c.windField, speedKnots: c.speedKnots,
+      backgroundWindKnots: c.backgroundWindKnots, pressureExponent: c.pressureExponent },
     boatLength: c.boatLength,
-    backgroundWindKnots: scenario.organicWind?.windKnots ?? c.backgroundWindKnots ?? 10,
-    pressureExponent: scenario.organicWind ? c.pressureExponent ?? 0.5 : 0,
     map: { bounds, cols, rows, cells } };
 }
 
@@ -57,7 +59,8 @@ const markEndGoal = o => {
 };
 const approachFor = (o, position, tack, wind, preferredDistance = null) => closestMarkApproach(position, wind.direction, tack,
   o.minAngle, o.gate.start, o.gate.end, markApproachClearance(o.boatLength), preferredDistance);
-const observedSpeed = (o, wind) => o.baseSpeedKnots * Math.max(0.1, wind.speedKnots / o.backgroundWindKnots) ** o.pressureExponent;
+const observedSpeed = (o, wind, heading = wind.direction + (o.tack === 'starboard' ? -o.minAngle : o.minAngle), maneuver = null, time = o.time) =>
+  performanceTarget(o.performance, heading, wind, maneuver, time);
 function predictedHeading(o, position, tack, mode, wind) {
   const approach = mode === 'gate' ? approachFor(o, position, tack, wind, o.markAimDistance) : null;
   return approach ? approach.heading : wind.direction + (tack === 'starboard' ? -o.minAngle : o.minAngle);
@@ -71,12 +74,13 @@ export function forecastObservedOption(o, action) {
   const position = { ...o.position };
   const gateVector = { x: o.gate.end.x - o.gate.start.x, y: o.gate.end.y - o.gate.start.y };
   const maneuver = action === 'tack' ? createTack(o.time, o.wind.direction + signedAngle(o.heading - o.wind.direction),
-    o.wind.direction, o.speedKnots, observedSpeed(o, o.wind), o) : o.tackManeuver;
+    o.wind.direction, o.speedKnots, observedSpeed(o, o.wind, o.heading), o) : o.tackManeuver;
   let pressure = 0, elapsed = 0;
+  let currentSpeed = o.speedKnots;
   let markAimDistance = mode === 'gate' && action !== 'bear' ? o.markAimDistance : null;
   while (elapsed < FORECAST_SECONDS - 1e-9) {
     const now = o.time + elapsed;
-    let dt = Math.min(FORECAST_SECONDS - elapsed, recoveryRemaining(maneuver, now) > 1e-9 ? EXPERT_TACK.integrationStepSeconds : 2);
+    let dt = Math.min(FORECAST_SECONDS - elapsed, recoveryRemaining(maneuver, now) > 1e-9 ? EXPERT_TACK.integrationStepSeconds : usesPolar(o.performance) ? STEP : 2);
     if (maneuver) for (const offset of [maneuver.duration, maneuver.recovery]) {
       const remaining = maneuver.start + offset - now;
       if (remaining > 1e-9) dt = Math.min(dt, remaining);
@@ -88,14 +92,25 @@ export function forecastObservedOption(o, action) {
       ? turnHeading(maneuver, time, local.direction, tack === 'starboard' ? -o.minAngle : o.minAngle)
       : (mode === 'gate' ? approachFor(o, point, tack, local, markAimDistance)?.heading : null)
         ?? local.direction + (tack === 'starboard' ? -o.minAngle : o.minAngle);
-    const initial = direction(headingAt(position, wind, now));
-    const initialSpeed = maneuverSpeed(maneuver, now, observedSpeed(o, wind)) * KNOT_TO_MPS;
+    const heading = headingAt(position, wind, now), initial = direction(heading);
+    const initialSpeed = performanceSpeed(o.performance, currentSpeed, observedSpeed(o, wind, heading, maneuver, now), maneuver, now) * KNOT_TO_MPS;
+    if (mode === 'gate') {
+      const side = gateVector.x * (position.y - o.gate.start.y) - gateVector.y * (position.x - o.gate.start.x);
+      const rate = (gateVector.x * initial.y - gateVector.y * initial.x) * initialSpeed;
+      if (side < -1e-10 && rate > 1e-10) dt = Math.min(dt, -side / rate * 1.5);
+    }
     const midpoint = { x: position.x + initial.x * initialSpeed * dt / 2, y: position.y + initial.y * initialSpeed * dt / 2 };
     const local = sampleObservedMap(o, midpoint);
-    const vector = direction(headingAt(midpoint, local, now + dt / 2));
-    const distance = maneuverSpeed(maneuver, now + dt / 2, observedSpeed(o, local)) * KNOT_TO_MPS * dt;
+    const middleHeading = headingAt(midpoint, local, now + dt / 2), vector = direction(middleHeading);
+    const target = observedSpeed(o, local, middleHeading, maneuver, now + dt / 2);
+    const maneuvering = recoveryRemaining(maneuver, now) > 1e-9;
+    const response = speedResponse(o.performance, initialSpeed / KNOT_TO_MPS, target, dt);
+    const distance = (maneuvering ? maneuverSpeed(maneuver, now + dt / 2, target) : response.mean) * KNOT_TO_MPS * dt;
     const previous = { ...position };
     position.x += vector.x * distance; position.y += vector.y * distance;
+    const endWind = sampleObservedMap(o, position);
+    currentSpeed = maneuvering ? maneuverSpeed(maneuver, now + dt,
+      observedSpeed(o, endWind, headingAt(position, endWind, now + dt), maneuver, now + dt)) : response.end;
     const sideBefore = gateVector.x * (previous.y - o.gate.start.y) - gateVector.y * (previous.x - o.gate.start.x);
     const sideAfter = gateVector.x * (position.y - o.gate.start.y) - gateVector.y * (position.x - o.gate.start.x);
     if (!turning(maneuver, now) && tack === 'starboard' && position.x < previous.x && sideBefore < -1e-8 && sideAfter >= -1e-8) {
@@ -147,9 +162,10 @@ export function decideLiveComputer(observation, memory = {}) {
   const improvement = tack ? hold.estimatedSeconds - tack.estimatedSeconds : -Infinity;
   const startTie = o.time < 1 && o.tack === 'starboard' && tack && improvement > -1.5;
   const pressure = tack ? tack.averageWindKnots - hold.averageWindKnots : 0;
-  const oldCourseComponent = direction(predictedHeading(o, o.position, o.tack, o.mode, o.wind)).y;
-  const newCourseComponent = direction(o.wind.direction + (o.tack === 'starboard' ? o.minAngle : -o.minAngle)).y;
-  const angleBenefit = (newCourseComponent - oldCourseComponent) * observedSpeed(o, o.wind);
+  const oldHeading = predictedHeading(o, o.position, o.tack, o.mode, o.wind);
+  const newHeading = o.wind.direction + (o.tack === 'starboard' ? o.minAngle : -o.minAngle);
+  const angleBenefit = direction(newHeading).y * observedSpeed(o, o.wind, newHeading)
+    - direction(oldHeading).y * observedSpeed(o, o.wind, oldHeading);
   // A single-command forecast cannot plan a mid-window tack. Without this
   // guard it can prefer repeated reversals simply to avoid overshooting the
   // gate in its own forecast. Hold the strategic leg until its layline unless
@@ -194,6 +210,6 @@ export function advanceLiveComputer(computer, scenario, duration) {
   const last = computer.track.at(-1);
   if (computer.boat.time - last.time >= 1 || computer.boat.finished) computer.track.push(computer.boat);
   if (computer.boat.finished) { computer.status = 'finished'; computer.latestReason = 'Finished on starboard using live wind observations only.'; }
-  else if (computer.boat.time > scenario.config.courseLength / (scenario.config.speedKnots * KNOT_TO_MPS * 0.5) * 4 + 300)
+  else if (computer.boat.time > scenario.config.courseLength / (referenceSpeedKnots(scenario.config) * KNOT_TO_MPS * 0.5) * 4 + 300)
     computer.status = 'timed-out';
 }

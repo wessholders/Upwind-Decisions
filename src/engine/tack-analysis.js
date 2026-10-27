@@ -4,6 +4,7 @@ import { replay } from './race.js';
 import { direction, signedAngle, normalize } from './geometry.js';
 import { windSampleAtPosition } from './wind.js';
 import { gateEnd } from './finish.js';
+import { performanceTarget } from './performance.js';
 
 export const TACK_COMPARISON_DELAY = 10;
 export const MAX_FINISH_COMPARISONS = 8;
@@ -69,7 +70,8 @@ export function describeTack(scenario, route, commandIndex, number, decision, co
   return { ...comparison, number, time: before.time, chosenTime: route.finish.time, boat: before,
     fromTack: before.tack, toTack: tacked.tack, wind: { ...wind, compassDirection: normalize(wind.direction + scenario.config.baseline) },
     oldHeading: normalize(oldHeading + scenario.config.baseline), newHeading: normalize(newHeading + scenario.config.baseline),
-    oldUpCourseKnots: speed * direction(oldHeading).y, newUpCourseKnots: speed * direction(newHeading).y,
+    oldUpCourseKnots: speed * direction(oldHeading).y,
+    newUpCourseKnots: performanceTarget(scenario.config, newHeading, wind) * direction(newHeading).y,
     observedWindChange: change, observationSeconds: before.time - previous.time, trend,
     finalTack: !route.commands.slice(commandIndex + 1).some(c => c.action === 'tack'),
     projectionSeconds: duration, tackNow: now, keepGoing: hold, finishDifference: difference,

@@ -4,7 +4,7 @@ import { closeTo, each } from './helpers.js';
 import { DEFAULT_CONFIG, KNOT_TO_MPS } from '../src/engine/config.js';
 import { optimize, search } from '../src/engine/optimizer.js';
 import { replay } from '../src/engine/race.js';
-import { createScenario } from '../src/engine/wind.js';
+import { createLegacyScenario as createScenario } from './helpers.js';
 describe('changing-wind route search', () => {
     each([
         { windMode: 'persistent', seed: 1 },

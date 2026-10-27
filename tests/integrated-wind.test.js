@@ -12,6 +12,7 @@ import { courseProjection } from '../src/views/wind-canvas.js';
 import { DEFAULT_CONFIG } from '../src/engine/config.js';
 import { observeCurrentWind } from '../src/engine/live-computer.js';
 import { windAtMark } from '../src/engine/finish.js';
+import { polarSpeedKnots } from '../src/engine/performance.js';
 
 const near = (a, b, e = 1e-7) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
 
@@ -59,13 +60,13 @@ describe('organic wind in the decision trainer', () => {
       const p = features.find(p => p.feature.kind === kind); assert.ok(p, kind);
       const boat = { ...initialBoat(), position: { x: p.x, y: p.y } };
       const wind = windSampleAtPosition(scenario, p.x, p.y, 0), speed = sailingSpeedKnots(boat, scenario);
-      near(speed, 5 * Math.sqrt(wind.speedKnots / 10));
-      assert.ok(kind === 'puff' ? speed > 5 : speed < 5);
+      near(speed, polarSpeedKnots(45, wind.speedKnots));
+      assert.ok(kind === 'puff' ? speed > 4.6 : speed < 4.6);
       near(sailingHeading(boat, scenario), windAtPosition(scenario, p.x, p.y, 0) - 45);
     }
   });
   it('preserves the optional fixed wind response while applying a moving tack under organic wind', () => {
-    const scenario = createScenario({ windField: 'organic', pressureExponent: 0, tackPenalty: 5 });
+    const scenario = createScenario({ performanceModel: 'legacy-pressure', windField: 'organic', pressureExponent: 0, tackPenalty: 5 });
     const p = fieldForScenario(scenario).featuresAt(0)[0];
     const boat = { ...initialBoat(), position: { x: p.x, y: p.y } };
     assert.equal(sailingSpeedKnots(boat, scenario), 5);
@@ -139,11 +140,11 @@ describe('organic wind in the decision trainer', () => {
         projection.point({ x: 0, y: 0 }).y - projection.point({ x: 0, y: 100 }).y);
     } finally { globalThis.document = originalDocument; }
   });
-  it('retains the previous uniform and traveling modes for existing scenarios', () => {
+  it('uses the polar in uniform and traveling wind as well as the organic field', () => {
     for (const windField of ['uniform', 'traveling']) {
       const scenario = createScenario({ ...DEFAULT_CONFIG, windField });
       assert.equal(scenario.organicWind, undefined);
-      near(sailingSpeedKnots(initialBoat(), scenario), 5);
+      near(sailingSpeedKnots(initialBoat(), scenario), 4.6);
     }
   });
 });

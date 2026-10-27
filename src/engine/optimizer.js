@@ -4,6 +4,7 @@ import { advance, applyAction, initialBoat, targetSpeedKnots } from './physics.j
 import { recoveryRemaining, tackSpeedCost } from './tack.js';
 import { replay } from './race.js';
 import { windAtPosition } from './wind.js';
+import { referenceSpeedKnots } from './performance.js';
 import { describeTack, stateBeforeCommand, TACK_COMPARISON_DELAY, MAX_FINISH_COMPARISONS } from './tack-analysis.js';
 // Ranking only: a frozen-current-wind travel estimate. It is NOT an admissible
 // bound for changing wind, and no optimality claim is made from this heuristic.
@@ -14,7 +15,7 @@ function rank(boat, scenario) {
     const up = dot(remaining, v);
     const across = Math.abs(dot(remaining, { x: v.y, y: -v.x }));
     const angle = radians(scenario.config.minAngle);
-    const speed = targetSpeedKnots(boat, scenario) * KNOT_TO_MPS;
+    const speed = Math.max(1e-6, targetSpeedKnots(boat, scenario)) * KNOT_TO_MPS;
     const sailing = Math.max(Math.hypot(remaining.x, remaining.y), up / Math.cos(angle), across / Math.sin(angle)) / speed;
     return sailing + (boat.tack === 'port' ? tackSpeedCost(scenario.config) : 0);
 }
@@ -29,7 +30,7 @@ export function search(scenario, options, start = initialBoat(), prefix = [], in
     let beam = [{ boat: start, parent: null, command: null }];
     let best = incumbent;
     let expanded = 0;
-    const speed = scenario.config.speedKnots * KNOT_TO_MPS;
+    const speed = referenceSpeedKnots(scenario.config) * KNOT_TO_MPS;
     const horizon = options.horizon ?? scenario.config.courseLength / (speed * Math.cos(radians(scenario.config.minAngle))) * 2.5 + 180;
     while (beam.length && beam[0].boat.time < Math.min(horizon, best?.finish.time ?? Infinity)) {
         const cells = new Map();
@@ -51,7 +52,7 @@ export function search(scenario, options, start = initialBoat(), prefix = [], in
                     continue;
                 }
                 const phase = boat.tackManeuver ? `${(boat.time - boat.tackManeuver.start).toFixed(2)},${boat.tackManeuver.entryOffset.toFixed(1)},${boat.tackManeuver.entrySpeed.toFixed(2)}` : '-';
-                const key = `${Math.round(boat.position.x / options.cell)},${Math.round(boat.position.y / options.cell)},${boat.tack},${boat.mode},${phase}`;
+                const key = `${Math.round(boat.position.x / options.cell)},${Math.round(boat.position.y / options.cell)},${boat.tack},${boat.mode},${boat.speedKnots?.toFixed(1)},${phase}`;
                 const score = rank(boat, scenario);
                 const previous = cells.get(key);
                 if (!previous || score < previous.score - 1e-8 || (Math.abs(score - previous.score) < 1e-8 && boat.distance < previous.node.boat.distance))

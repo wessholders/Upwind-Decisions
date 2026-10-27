@@ -120,6 +120,45 @@ try {
   await evaluate(`new Promise(resolve => setTimeout(resolve, 180))`);
   assert.notEqual(await evaluate(`document.getElementById('wind-canvas').toDataURL()`), readyWind, 'The ready racecourse should show flowing particles.');
   await screenshot('trainer-desktop');
+  const waterViewport = await evaluate(`(async () => {
+    const { createScenario } = await import('./src/engine/wind.js');
+    const { RaceWindLayer } = await import('./src/views/organic-wind.js');
+    const { courseProjection } = await import('./src/views/wind-canvas.js');
+    const scenario = createScenario({ windField: 'organic', windMode: 'steady' });
+    scenario.organicWind = { ...scenario.organicWind, initialFeatures: 0, frequency: 0 };
+    const scenes = [];
+    for (const [width, height, view] of [[1440, 580, '25 -1100 550 550'], [390, 700, '25 -1100 550 550'],
+      [1440, 580, '-580 -1180 1160 1260'], [390, 700, '-580 -1180 1160 1260']]) {
+      const canvas = document.createElement('canvas'), layer = new RaceWindLayer();
+      const metrics = { width, height, padding: { left: 15, right: 15, top: 65, bottom: 25 } };
+      layer.draw(canvas, scenario, 0, view, 'streaks', metrics);
+      const ctx = canvas.getContext('2d'), points = [[5, 5], [25, 150], [width - 25, 150], [width / 2, height / 2], [width / 2, height - 10]];
+      const opaque = points.every(([x, y]) => ctx.getImageData(x, y, 1, 1).data[3] === 255);
+      const colors = points.map(([x, y]) => Array.from(ctx.getImageData(x, y, 1, 1).data));
+      scenes.push({ width, height, view, opaque, corners: [colors[0], colors.at(-1)] });
+      if (width === 1440 && view.startsWith('25 ')) {
+        // Put two known trails in visible water outside the nominal viewBox.
+        // These were wrongly cut off even though SVG course geometry is visible.
+        layer.particles.active = [-100, 600].map(x => ({ x, y: 800, age: 1, life: 2.1, retireAt: Infinity }));
+        layer.draw(canvas, scenario, 0, view, 'streaks', metrics);
+        const projection = courseProjection(view, width, height, metrics.padding);
+        scenes.at(-1).outerTrailsVisible = [-100, 600].map(x => {
+          const p = projection.point({ x, y: 800 });
+          const data = ctx.getImageData(Math.floor(p.x) - 2, Math.floor(p.y) - 12, 5, 14).data;
+          let darker = 0;
+          for (let i = 0; i < data.length; i += 4) if (data[i] < 190 && data[i + 3] === 255) darker++;
+          return darker > 0;
+        });
+      }
+    }
+    return scenes;
+  })()`);
+  for (const scene of waterViewport) {
+    assert.ok(scene.opaque, 'Water must cover the entire map, including camera margins.');
+    assert.deepEqual(scene.corners[0], [194, 220, 224, 255]);
+    assert.deepEqual(scene.corners[1], scene.corners[0]);
+    if (scene.outerTrailsVisible) assert.ok(scene.outerTrailsVisible.every(Boolean), 'Visible water beside the viewBox must retain its wind trails.');
+  }
   // Verify the actual canvas output for both wind types on one controlled
   // scene. Median core tones avoid confusing a particle pixel with water.
   const contrast = await evaluate(`(async () => {
@@ -263,8 +302,8 @@ try {
   assert.equal(raceResult.tackTrace.startHeading, raceResult.tackTrace.entryHeading);
   const tackSamples = raceResult.tackTrace.samples;
   assert.equal(tackSamples[17].heading, 45); assert.ok(tackSamples[17].tackDisabled); assert.equal(tackSamples[17].bearDisabled, false);
-  assert.equal(tackSamples[31].tackDisabled, false); assert.equal(tackSamples[31].speed, 5);
-  assert.ok(Math.abs(Math.min(...tackSamples.map(p => p.speed)) - 4) < 0.1);
+  assert.equal(tackSamples[31].tackDisabled, false); assert.equal(tackSamples[31].speed, 4.6);
+  assert.ok(Math.abs(Math.min(...tackSamples.map(p => p.speed)) - 3.68) < 0.1);
   for (let i = 1; i < tackSamples.length; i++) assert.ok(Math.hypot(tackSamples[i].x - tackSamples[i - 1].x, tackSamples[i].y - tackSamples[i - 1].y) > 0.4);
   raceResult.tackTrace = { entryHeading: raceResult.tackTrace.entryHeading, turnEndHeading: tackSamples[17].heading,
     minimumSpeed: Math.min(...tackSamples.map(p => p.speed)), recoveredSpeed: tackSamples[31].speed, movingSamples: tackSamples.length };
@@ -326,7 +365,7 @@ try {
   // after its closest point. Retain the displayed target until the finish.
   const reachingResult = await evaluate(`(() => {
     document.getElementById('retry').click();
-    for (const [name, value] of Object.entries({ speedKnots: 20, courseLength: 300 })) {
+    for (const [name, value] of Object.entries({ speedScale: 4, courseLength: 300 })) {
       const input = document.querySelector('[name="' + name + '"]'); input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
     }
     document.getElementById('settings-form').requestSubmit();
@@ -336,23 +375,28 @@ try {
     document.getElementById('tack').click();
     for (let i = 0; i < 500 && (document.getElementById('tack').disabled || position().e > 25); i++) window.__stepQA(62.5);
     const before = { x: position().e, y: -position().f };
+    const entrySpeed = Number(document.getElementById('speed-value').textContent);
     document.getElementById('bear').click();
-    const targets = [];
+    const initialSpeed = Number(document.getElementById('speed-value').textContent);
+    const targets = [], speeds = [];
     for (let i = 0; i < 500 && document.getElementById('status').textContent !== 'LEG COMPLETE'; i++) {
       const guide = document.querySelector('.mark-approach-guide');
       if (guide) targets.push(Number(guide.getAttribute('d').split(' L')[1].split(',')[1]));
+      speeds.push(Number(document.getElementById('speed-value').textContent));
       window.__stepQA(62.5);
     }
-    return { before, finished: document.getElementById('status').textContent === 'LEG COMPLETE',
+    return { before, entrySpeed, initialSpeed, peakSpeed: Math.max(...speeds), finished: document.getElementById('status').textContent === 'LEG COMPLETE',
       targets: targets.length, targetDriftMeters: Math.max(...targets) - Math.min(...targets),
       finishOffsetMeters: -position().f - 300, tacks: document.getElementById('tack-count').textContent };
   })()`);
   assert.ok(reachingResult.finished); assert.equal(reachingResult.tacks, '2');
+  assert.equal(reachingResult.initialSpeed, reachingResult.entrySpeed);
+  assert.ok(reachingResult.peakSpeed > reachingResult.entrySpeed + 0.2, 'Bearing away must gradually accelerate toward the reaching polar.');
   assert.ok(reachingResult.targets > 2); assert.ok(reachingResult.targetDriftMeters < 1e-6);
   assert.ok(reachingResult.finishOffsetMeters > 3 && reachingResult.finishOffsetMeters < 6);
   await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: injection.identifier });
   assert.equal(errors.length, 0, JSON.stringify(errors));
   console.log(JSON.stringify({ desktop: '1440×1100', mobile: '390×844', runtimeErrors: errors.length,
     controls: 'sailing and live opponent, pause, retry, settings, complete leg, hindsight explanations, tack-time inspection, computer finish comparison, armed and active gate aiming', rendererCheck, contrast, workerResult, raceResult, bearingResult,
-    reachingResult, screenshots: 'artifacts.local/wind-*.png and trainer-*.png' }, null, 2));
+    reachingResult, waterViewport, screenshots: 'artifacts.local/wind-*.png and trainer-*.png' }, null, 2));
 } finally { socket.close(); }

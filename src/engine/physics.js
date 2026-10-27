@@ -3,9 +3,10 @@ import { createTack, turnRemaining, recoveryRemaining, turning, turnHeading, man
 import { direction, headingTo, interpolate, normalize, signedAngle, closestMarkApproach, markApproachClearance, cross, subtract } from './geometry.js';
 import { finishFraction, gateEnd } from './finish.js';
 import { windAtPosition, windIntegrationStep, windSampleAtPosition } from './wind.js';
+import { performanceTarget, performanceSpeed, speedResponse, usesPolar } from './performance.js';
 export const initialBoat = () => ({
     position: { x: 0, y: 0 }, time: 0, tack: 'starboard', mode: 'close',
-    penaltyRemaining: 0, penaltyTime: 0, tackManeuver: null, distance: 0, tacks: 0, finished: false,
+    penaltyRemaining: 0, penaltyTime: 0, tackManeuver: null, speedKnots: null, distance: 0, tacks: 0, finished: false,
 });
 export function gateAimGeometry(boat, scenario, time = boat.time) {
     const wind = windAtPosition(scenario, boat.position.x, boat.position.y, time);
@@ -45,16 +46,11 @@ export function canBearAway(boat, scenario) {
 }
 export const compassHeading = (boat, scenario) => normalize(sailingHeading(boat, scenario) + scenario.config.baseline);
 export function targetSpeedKnots(boat, scenario, time = boat.time) {
-    if (!scenario.organicWind) return scenario.config.speedKnots;
     const local = windSampleAtPosition(scenario, boat.position.x, boat.position.y, time);
-    // Explicit simplified training response, not a calibrated boat polar.
-    // Exponent zero retains fixed speed; the default square-root response
-    // makes pressure tactically meaningful for BOTH player and reference.
-    const ratio = Math.max(0.1, local.speedKnots / scenario.organicWind.windKnots);
-    return scenario.config.speedKnots * ratio ** (scenario.config.pressureExponent ?? 0.5);
+    return performanceTarget(scenario.config, sailingHeading(boat, scenario, time), local, boat.tackManeuver, time);
 }
 export function sailingSpeedKnots(boat, scenario, time = boat.time) {
-    return maneuverSpeed(boat.tackManeuver, time, targetSpeedKnots(boat, scenario, time));
+    return performanceSpeed(scenario.config, boat.speedKnots, targetSpeedKnots(boat, scenario, time), boat.tackManeuver, time);
 }
 export function applyAction(boat, action, scenario) {
     if (boat.finished || turning(boat.tackManeuver, boat.time) ||
@@ -65,14 +61,14 @@ export function applyAction(boat, action, scenario) {
         const maneuver = createTack(boat.time, wind + signedAngle(sailingHeading(boat, scenario) - wind), wind,
             sailingSpeedKnots(boat, scenario), targetSpeedKnots(boat, scenario), scenario.config, boat.penaltyTime);
         return { ...boat, tack: boat.tack === 'starboard' ? 'port' : 'starboard', mode: 'close', markAimDistance: null,
-            tacks: boat.tacks + 1, tackManeuver: maneuver, penaltyRemaining: maneuver?.duration ?? 0 };
+            speedKnots: sailingSpeedKnots(boat, scenario), tacks: boat.tacks + 1, tackManeuver: maneuver, penaltyRemaining: maneuver?.duration ?? 0 };
     }
     if (action === 'bear') {
-        const aiming = { ...boat, mode: 'gate', markAimDistance: null };
+        const aiming = { ...boat, speedKnots: sailingSpeedKnots(boat, scenario), mode: 'gate', markAimDistance: null };
         return refreshMarkApproach(aiming, scenario);
     }
     if (action === 'close')
-        return { ...boat, mode: 'close', markAimDistance: null };
+        return { ...boat, speedKnots: sailingSpeedKnots(boat, scenario), mode: 'close', markAimDistance: null };
     return boat;
 }
 function refreshMarkApproach(boat, scenario) {
@@ -90,7 +86,7 @@ export function advance(boat, scenario, duration = STEP) {
     while (state.time < endTime - 1e-9 && !state.finished) {
         state = refreshMarkApproach(state, scenario);
         const dt = Math.min(STEP, endTime - state.time);
-        if (scenario.config.windField === 'traveling' || scenario.organicWind || recoveryRemaining(state.tackManeuver, state.time) > 1e-9) {
+        if (usesPolar(scenario.config) || scenario.config.windField === 'traveling' || scenario.organicWind || recoveryRemaining(state.tackManeuver, state.time) > 1e-9) {
             state = advanceThroughField(state, scenario, dt);
             continue;
         }
@@ -98,15 +94,15 @@ export function advance(boat, scenario, duration = STEP) {
         const distance = sailingSpeedKnots(state, scenario, state.time + dt / 2) * KNOT_TO_MPS * dt;
         const position = { x: state.position.x + v.x * distance, y: state.position.y + v.y * distance };
         const fraction = finishFraction(scenario, state.position, position, state.time, dt, state.tack);
-        state = movedBoat(state, position, distance, dt, fraction);
+        state = movedBoat(state, position, distance, dt, fraction, sailingSpeedKnots(state, scenario));
     }
     return state;
 }
 
-function movedBoat(boat, position, distance, dt, fraction) {
+function movedBoat(boat, position, distance, dt, fraction, speedKnots) {
     const elapsed = dt * (fraction ?? 1), time = boat.time + elapsed;
     return { ...boat, position: fraction === null ? position : interpolate(boat.position, position, fraction),
-        time, distance: boat.distance + distance * (fraction ?? 1), finished: fraction !== null,
+        time, speedKnots, distance: boat.distance + distance * (fraction ?? 1), finished: fraction !== null,
         penaltyTime: boat.tackManeuver ? boat.tackManeuver.priorTurnTime + Math.min(boat.tackManeuver.duration, time - boat.tackManeuver.start) : boat.penaltyTime,
         penaltyRemaining: turnRemaining(boat.tackManeuver, time),
         tackManeuver: recoveryRemaining(boat.tackManeuver, time) > 1e-9 ? boat.tackManeuver : null };
@@ -147,12 +143,20 @@ function advanceThroughField(boat, scenario, duration) {
             x: current.position.x + initial.x * initialSpeed * dt / 2,
             y: current.position.y + initial.y * initialSpeed * dt / 2,
         } };
-        const speed = sailingSpeedKnots(midpoint, scenario, current.time + dt / 2) * KNOT_TO_MPS;
+        const target = targetSpeedKnots(midpoint, scenario, current.time + dt / 2);
+        const maneuvering = recoveryRemaining(current.tackManeuver, current.time) > 1e-9;
+        const speed = (maneuvering ? maneuverSpeed(current.tackManeuver, current.time + dt / 2, target)
+            : speedResponse(scenario.config, initialSpeed / KNOT_TO_MPS, target, dt).mean) * KNOT_TO_MPS;
         const v = direction(sailingHeading(midpoint, scenario, current.time + dt / 2));
         const position = { x: current.position.x + v.x * speed * dt, y: current.position.y + v.y * speed * dt };
         const fraction = turning(current.tackManeuver, current.time) ? null
             : finishFraction(scenario, current.position, position, current.time, dt, current.tack);
-        current = movedBoat(current, position, speed * dt, dt, fraction);
+        const actualTime = current.time + dt * (fraction ?? 1);
+        const actualPosition = fraction === null ? position : interpolate(current.position, position, fraction);
+        const endTarget = targetSpeedKnots({ ...current, position: actualPosition }, scenario, actualTime);
+        const endSpeed = maneuvering ? maneuverSpeed(current.tackManeuver, actualTime, endTarget)
+            : speedResponse(scenario.config, initialSpeed / KNOT_TO_MPS, target, dt * (fraction ?? 1)).end;
+        current = movedBoat(current, position, speed * dt, dt, fraction, endSpeed);
     }
     return current.finished ? current : { ...current, time: endTime };
 }

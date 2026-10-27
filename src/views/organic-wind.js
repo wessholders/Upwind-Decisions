@@ -24,21 +24,23 @@ export class RaceWindLayer {
     const ctx = canvas.getContext('2d');
     ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0); ctx.clearRect(0, 0, width, height);
     if (display === 'hidden') return;
+    // One continuous water surface across the map, including camera margins.
+    ctx.fillStyle = WIND_PALETTES.light.water;
+    ctx.fillRect(0, 0, width, height);
     const projection = courseProjection(viewBox, width, height, padding), origin = projection.point({ x: 0, y: 0 });
     const camera = { scale: projection.scale, ox: origin.x, oy: origin.y };
     if (camera.scale <= 0) return;
     let remaining = Math.min(0.1, Math.max(0, elapsed));
     while (remaining > 1e-8) { const dt = Math.min(0.025, remaining); this.particles.update(dt, time); remaining -= dt; }
     ctx.save(); ctx.beginPath();
-    ctx.rect(projection.startX, projection.startY, projection.spanX * projection.scale, projection.spanY * projection.scale); ctx.clip();
-    ctx.fillStyle = WIND_PALETTES.light.water;
-    ctx.fillRect(projection.startX, projection.startY, projection.spanX * projection.scale, projection.spanY * projection.scale);
+    const viewport = projection.viewport;
+    ctx.rect(viewport.left, viewport.top, viewport.width, viewport.height); ctx.clip();
     this.water.draw(ctx, this.field, time, camera);
     drawParticleTrails(ctx, this.field, this.particles, time, camera, 'light');
     if (display === 'boundaries') drawFeatureOutlines(ctx, this.field, time, camera, 'light', {
-      left: projection.startX, right: projection.startX + projection.spanX * projection.scale,
-      top: projection.startY, bottom: projection.startY + projection.spanY * projection.scale });
-    if (vectors) drawDebugVectors(ctx, this.field, time, camera, projection.bounds, 'light');
+      left: viewport.left, right: viewport.left + viewport.width,
+      top: viewport.top, bottom: viewport.top + viewport.height });
+    if (vectors) drawDebugVectors(ctx, this.field, time, camera, projection.visibleBounds, 'light');
     ctx.restore();
   }
 }

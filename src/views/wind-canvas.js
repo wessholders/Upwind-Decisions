@@ -45,6 +45,11 @@ export function courseProjection(viewBox, width, height, padding = {}) {
   return {
     scale, startX, startY, spanX, spanY,
     bounds: { minX, maxX: minX + spanX, minY: -minSvgY - spanY, maxY: -minSvgY },
+    // SVG's meet transform adds space beside/above the requested viewBox.
+    // Course geometry remains visible there, so wind must cover it too.
+    viewport: { left, top, width: innerWidth, height: innerHeight },
+    visibleBounds: { minX: minX + (left - startX) / scale, maxX: minX + (width - right - startX) / scale,
+      minY: -minSvgY - (height - bottom - startY) / scale, maxY: -minSvgY - (top - startY) / scale },
     point: p => ({ x: startX + (p.x - minX) * scale, y: startY + (-p.y - minSvgY) * scale }),
   };
 }
@@ -80,12 +85,13 @@ export function drawWindCanvas(canvas, scenario, time, viewBox, display, metrics
   const project = projection.point;
   context.save();
   context.beginPath();
-  context.rect(projection.startX, projection.startY, projection.spanX * projection.scale, projection.spanY * projection.scale);
+  const viewport = projection.viewport, visible = projection.visibleBounds;
+  context.rect(viewport.left, viewport.top, viewport.width, viewport.height);
   context.clip();
   context.beginPath();
   context.lineWidth = 0.85;
   context.strokeStyle = 'rgba(55, 103, 120, 0.26)';
-  for (const streak of streakGeometry(scenario, time, projection.bounds, 30 / projection.scale, 17 / projection.scale)) {
+  for (const streak of streakGeometry(scenario, time, visible, 30 / projection.scale, 17 / projection.scale)) {
     const a = project(streak.from), b = project(streak.to);
     context.moveTo(a.x, a.y); context.lineTo(b.x, b.y);
   }
@@ -95,8 +101,8 @@ export function drawWindCanvas(canvas, scenario, time, viewBox, display, metrics
     context.setLineDash([4, 7]);
     context.strokeStyle = 'rgba(55, 103, 120, 0.45)';
     for (const front of windBoundaries(scenario, time)) {
-      if (front.y < projection.bounds.minY || front.y > Math.min(projection.bounds.maxY, windEntryHeight(scenario))) continue;
-      const a = project({ x: projection.bounds.minX, y: front.y }), b = project({ x: projection.bounds.maxX, y: front.y });
+      if (front.y < visible.minY || front.y > Math.min(visible.maxY, windEntryHeight(scenario))) continue;
+      const a = project({ x: visible.minX, y: front.y }), b = project({ x: visible.maxX, y: front.y });
       context.moveTo(a.x, a.y); context.lineTo(b.x, b.y);
     }
     context.stroke();

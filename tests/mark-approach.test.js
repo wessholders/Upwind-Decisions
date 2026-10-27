@@ -53,7 +53,7 @@ describe('close, clearance-safe windward mark rounding', () => {
   it('holds its acquired safe tangent through the finish at different speeds and approach angles', () => {
     let approaches = 0;
     for (const windField of ['uniform', 'traveling', 'organic']) for (const speedKnots of [1, 5, 20]) {
-      const scenario = createScenario({ windField, speedKnots, windMode: 'steady', maxShift: 0, windContrast: 0, pressureExponent: 0 });
+      const scenario = createScenario({ windField, speedScale: speedKnots / 4.6, windMode: 'steady', maxShift: 0, windContrast: 0, pressureExponent: 0 });
       const mark = { x: 0, y: scenario.config.courseLength };
       for (const x of [0.2, 1, 2, 3, 4, 5, 10, 25, 100]) for (const y of [-100, -10, -3, 0, 3, 5, 10, 50, 150]) {
         const start = { ...initialBoat(), position: { x, y: mark.y + y } };
@@ -104,7 +104,7 @@ describe('close, clearance-safe windward mark rounding', () => {
       const end = gateEnd(scenario, 0), mark = { x: 0, y: scenario.config.courseLength };
       near(cross(subtract(end, mark), subtract(aim.target, mark)), 0, 1e-6);
       assert.ok(validHeading(aim.heading, wind, 'starboard', minAngle));
-      const finish = advance(boat, scenario, 80);
+      const finish = advance(boat, scenario, 250);
       assert.ok(finish.finished); assert.equal(finish.tack, 'starboard');
     }
   });

@@ -12,7 +12,7 @@ import { courseProjection, drawWindCanvas, streakGeometry, windBoundaries, windS
 import { windHistoryView } from '../src/views/wind-history.js';
 import { closeTo } from './helpers.js';
 
-const traveling = (extra = {}) => createScenario({ ...DEFAULT_CONFIG, courseLength: 100,
+const traveling = (extra = {}) => createScenario({ ...DEFAULT_CONFIG, performanceModel: 'legacy-pressure', courseLength: 100,
   windField: 'traveling', windMode: 'persistent', propagationSpeed: 3,
   persistentShiftAngle: 12, transitionWidth: 30, shiftStartTime: 10, ...extra });
 

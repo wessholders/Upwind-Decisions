@@ -1,3 +1,4 @@
+import { BOAT_PROFILES } from './boat-profile.js';
 export const STEP = 0.25;
 export const KNOT_TO_MPS = 1852 / 3600;
 export const EXPERT_TACK = {
@@ -6,6 +7,7 @@ export const EXPERT_TACK = {
 };
 export const DEFAULT_CONFIG = {
     courseLength: 1000, speedKnots: 5, minAngle: 45,
+    performanceModel: 'polar', boatProfile: 'dinghy-main-jib', speedScale: 1,
     // Keep the existing settings key; it now means moving turn duration.
     tackPenalty: EXPERT_TACK.durationSeconds,
     tackMinSpeedFraction: EXPERT_TACK.minSpeedFraction,
@@ -18,12 +20,12 @@ export const DEFAULT_CONFIG = {
     favoredSide: 'balanced', windBias: 65, windFrequency: 1.5,
     windSizeBL: 35, backgroundWindKnots: 10, windContrast: 30, pressureExponent: 0.5,
 };
-// Keep engine callers' legacy default stable; the decision tool starts with
-// the integrated organic field, including pressure-dependent sailing speed.
+// The trainer starts with the integrated organic field; all default wind
+// modes share the same polar. Legacy speed response is explicit opt-in.
 export const DEFAULT_TRAINER_CONFIG = { ...DEFAULT_CONFIG, windField: 'organic' };
 export function validateConfig(config) {
     const ranges = {
-        courseLength: [100, 5000], speedKnots: [1, 20], minAngle: [30, 60],
+        courseLength: [100, 5000], speedKnots: [1, 20], speedScale: [0.1, 5], minAngle: [30, 60],
         tackPenalty: [0, 30], tackMinSpeedFraction: [0.1, 1], tackRecoverySeconds: [0, 60],
         baseline: [0, 359], boatLength: [1, 30],
         gateBoatLengths: [1, 30], maxShift: [0, 30], shiftDuration: [2, 300],
@@ -40,6 +42,8 @@ export function validateConfig(config) {
     }
     if (!Number.isInteger(config.seed))
         throw new Error('Seed must be an integer.');
+    if (!['polar', 'legacy-pressure'].includes(config.performanceModel) || !Object.hasOwn(BOAT_PROFILES, config.boatProfile))
+        throw new Error('Unknown boat performance model or profile.');
     if (!['steady', 'persistent', 'oscillating'].includes(config.windMode))
         throw new Error('Unknown wind mode.');
     if (!['easy', 'medium', 'hard'].includes(config.difficulty))

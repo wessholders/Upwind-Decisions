@@ -8,7 +8,7 @@ import { advance, applyAction, canBearAway, compassHeading, initialBoat, sailing
 import { replay } from '../src/engine/race.js';
 import { createScenario, windAt } from '../src/engine/wind.js';
 import { search } from '../src/engine/optimizer.js';
-const scenario = (extra = {}) => createScenario({ ...DEFAULT_CONFIG, windMode: 'steady', ...extra });
+const scenario = (extra = {}) => createScenario({ ...DEFAULT_CONFIG, performanceModel: 'legacy-pressure', windMode: 'steady', ...extra });
 const at = (x, y, extra = {}) => ({ ...initialBoat(), position: { x, y }, ...extra });
 describe('sailing geometry and shared movement', () => {
     it('starts on starboard, close-hauled up-left at 45 degrees', () => {

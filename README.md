@@ -25,9 +25,9 @@ To deploy, upload **`index.html`, `wind-sandbox.html` and the `src/` directory**
 
 The main trainer at `/` opens with **Puffs & pockets** selected. **Puffs** have darker water and dense, bold, fast trails (4× ambient core density); **pockets** have lighter water and sparse, finer, slower trails (0.4× density). Choose **Wind on water → Identify puffs / pockets** for explicit type labels and distinct outlines. Outside features, wind always comes directly from upwind: **0° relative to the course**. Steady, persistent and oscillating regimes control the direction within features and their travel, with smooth edges blending back to the fixed ambient direction. Choose a balanced, left-favored or right-favored course. Wind on water can also hide the display; the debug-vector checkbox is independent.
 
-The boat, compass, live wind-strength instrument, wind history, finish gate, and hindsight optimizer sample the same authoritative field. Puffs increase boat speed and light air reduces it using the explicit training rule `base boat speed × (local wind / background wind)^response`. The default response is 0.5 (square root); set it to 0 to keep speed fixed. This is a simplified pressure response, not a calibrated polar. Tack penalties, legal headings, bear-away steering and finish rules are preserved.
+The boat, compass, live wind-strength instrument, wind history, finish gate, and hindsight optimizer sample the same authoritative field. Boat targets come from the supplied provisional **main + jib polar**, using local true wind strength and unsigned true wind angle. Bearing away can increase the target; heading farther downwind can reduce it. Actual speed approaches the target gradually. The polar replaces the former square-root pressure multiplier. The existing smooth tack turn, speed-loss envelope, recovery and finish rules are preserved. See [boat performance and tuning](docs/POLAR.md).
 
-Under **Advanced settings**, adjust the favored-side probability (default 65/35), feature frequency, nominal patch width in boatlengths, background wind, speed contrast, pressure response and maximum shift. Applying settings starts a fresh leg; **Retry same wind** preserves the exact seed and conditions. The earlier uniform and traveling-front modes remain available.
+Under **Advanced settings**, adjust the favored-side probability (default 65/35), feature frequency, nominal patch width in boatlengths, background wind, speed contrast, polar speed scale and maximum shift. Applying settings starts a fresh leg; **Retry same wind** preserves the exact seed and conditions. Uniform and traveling-front modes use the same polar as the organic field.
 
 The optional [wind inspection lab](wind-sandbox.html) remains available for dragging a stationary probe around the field. It shares the wind modules with the main trainer; gameplay takes place in the main trainer. See [the integrated wind-field design and prototype audit](docs/WIND_FIELD.md) for implementation and validation details.
 
@@ -55,7 +55,7 @@ This is a simplified training model. Horizontal fronts move along the down-cours
 
 See [the spatial model](docs/SPATIAL_WIND.md) for equations, numerical limits and validation.
 
-Trainer defaults: organic wind; 1000 m course; 5 kn base boat speed at 10 kn background wind; square-root pressure response; minimum 45° true wind angle outside tacks; 4.5 s moving tack with 80% minimum speed and recovery by 8 s; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° individual regime/feature shift bound. Regime and feature deviations can combine inside patches; ambient wind outside patches stays at 0° relative to the course. No current, waves, calibrated polar curve, or apparent-wind model. Legacy uniform/traveling modes retain fixed target speed with the same temporary tack loss.
+Trainer defaults: organic wind; 1000 m course; main + jib polar at scale 1; 4.6 kn target at 45° TWA in 10 kn wind; 3 s acceleration / 2 s deceleration time constants; minimum 45° sailing angle outside tacks; 4.5 s moving tack with the existing 80% speed envelope and recovery by 8 s; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° individual regime/feature shift bound. Regime and feature deviations can combine inside patches; ambient wind outside patches stays at 0° relative to the course. The polar is provisional, not measured telemetry. No current, waves, spinnaker deployment or apparent-wind model is added.
 
 ## Architecture
 
@@ -65,6 +65,8 @@ src/styles.css           responsive layout using local font fallbacks
 src/engine/
   config.js      units, defaults, validation, fixed timestep
   geometry.js    angles, vectors, tack legality, laylines
+  boat-profile.js editable main + jib polar and speed-response tuning
+  performance.js shared polar interpolation, extensions and speed response
   wind.js        seeded scenario generation and time-indexed interpolation
   finish.js      finite rotating gate and crossing interpolation
   physics.js     single authoritative boat model and commands
@@ -86,7 +88,7 @@ The view uses SVG's uniform `preserveAspectRatio="xMidYMid meet"` transform: equ
 
 ## Numerical limits
 
-The integrator uses a maximum **0.25 s** outer step. Uniform wind retains midpoint time sampling; traveling and organic wind use predicted midpoint position/time sampling. Organic mode samples pressure-dependent boat speed at that same midpoint and shortens integration steps near small, fast patches; traveling mode shortens them near narrow fronts. Playback uses only fixed outer steps, independent of refresh rate. Tack penalties and finish times may end on a partial step. Finish detection evaluates the rotating gate and uses bisection within a linear movement substep. Movement and rotating-gate crossing therefore remain numerical approximations, not exact continuous-time solutions. Extremely fast externally supplied wind curves are outside the tested generator's range.
+The integrator uses a maximum **0.25 s** outer step. Polar races use midpoint position/time wind and heading samples, with exact exponential mean speed for each normal-response substep. Organic mode shortens integration steps near small, fast patches; traveling mode shortens them near narrow fronts. Tacks retain their 0.05 s maximum substep and existing maneuver envelope. Playback uses fixed outer steps, independent of refresh rate. Maneuver phases and finish times may end on a partial step. Finish detection evaluates the rotating gate and uses bisection within a linear movement substep. Movement and rotating-gate crossing remain numerical approximations, not exact continuous-time solutions. Extremely fast externally supplied wind curves are outside the tested generator's range.
 
 The benchmark uses a 4 s coarse search followed by a 2 s search with a 140-state beam and 2 m position cells. It includes hold, tack, mark-approach, and close-hauled actions. Mark approach finds the nearest clearance-safe, legal crossing beside the buoy; it does not enumerate every legal bearing-away angle. The same geometry and finish clearance apply to the player, live computer and reference. The ranking heuristic estimates travel using frozen current wind and is not an admissible bound under future shifts. Pruning, time/space discretization, a finite horizon, and the restricted steering set can all miss better routes. **Best route found numerically; global optimality is not certified.**
 

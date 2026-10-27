@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createScenario } from '../src/engine/wind.js';
+import { createLegacyScenario as createScenario } from './helpers.js';
 import { initialBoat, applyAction, advance, sailingHeading, sailingSpeedKnots, targetSpeedKnots } from '../src/engine/physics.js';
 import { createTack, maneuverSpeed } from '../src/engine/tack.js';
 import { fieldForScenario } from '../src/wind/field.js';

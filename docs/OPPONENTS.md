@@ -2,6 +2,8 @@
 
 Both boats use the player's authoritative wind field, pressure response, allowed headings, tack penalty, close-mark approach steering and clearance-safe finish crossing. Their information and decision methods differ. See [mark approach geometry](MARK_APPROACH.md).
 
+Default boat performance comes from the shared [main + jib polar](POLAR.md) and gradual actual-speed response. The observation carries public profile settings and current actual speed. Frozen-map forecasts use those same target/response functions; hindsight advances the authoritative physics. Search state grouping includes actual speed, and horizons and VMG/progress estimates use polar performance. The earlier constant-speed/pressure goldens explicitly select compatibility mode in tests.
+
 ## Live computer (purple)
 
 `src/engine/live-computer.js` separates a current observation adapter from the pure decision policy. Every adapter wind sample is explicitly at the computer's current time. It sends only a plain vector grid over the full-course observation area, exact local wind, current boat state, current gate and public boat settings. It sends no seed, wind knots/targets, future spawn records, feature lifetime, scenario object or function capable of querying future wind. Different future schedules with identical present observations produce identical policy decisions in tests.
