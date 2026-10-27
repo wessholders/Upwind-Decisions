@@ -32,8 +32,8 @@ export function tackExplanationsView(comparisons, settings) {
       <div class="tack-card-top"><strong>Tack ${c.number} · ${formatTime(c.time)} (${c.time.toFixed(1)} s)</strong><button type="button" data-inspect-tack="${c.number}">View wind at this tack</button></div>
       <h3>${headline(c)}</h3>
       <p>From <strong>${escapeHtml(c.fromTack)}</strong> to <strong>${escapeHtml(c.toTack)}</strong>, ${Math.abs(c.boat.position.x).toFixed(0)} m ${right ? 'right' : 'left'} of center and ${c.boat.position.y.toFixed(0)} m up the course. Local wind: <strong>${bearing(direction)} at ${c.wind.speedKnots.toFixed(1)} kn</strong>.${trend}${final}</p>
-      <p>Heading changes ${bearing(c.oldHeading)} → ${bearing(c.newHeading)}. Once moving, the up-course speed component changes ${c.oldUpCourseKnots.toFixed(1)} → ${c.newUpCourseKnots.toFixed(1)} kn; the tack penalty still applies.</p>
-      <div class="table-scroll"><table class="tack-options"><caption>Short projection through the actual evolving wind: up to ${c.projectionSeconds.toFixed(0)} s, with no further commands</caption><thead><tr><th>Option</th><th>Mean wind</th><th>Up-course gain</th><th>Stopped</th><th>From gate</th></tr></thead><tbody>${branch('Tack now', c.tackNow)}${branch('Keep going', c.keepGoing)}</tbody></table></div>
+      <p>The boat turns progressively from ${bearing(c.oldHeading)} toward ${bearing(c.newHeading)} while continuing to move. At the current wind and normal speed, the settled up-course component changes ${c.oldUpCourseKnots.toFixed(1)} → ${c.newUpCourseKnots.toFixed(1)} kn; temporary speed loss and recovery are included in the projection.</p>
+      <div class="table-scroll"><table class="tack-options"><caption>Short projection through the actual evolving wind: up to ${c.projectionSeconds.toFixed(0)} s, with no further commands</caption><thead><tr><th>Option</th><th>Mean wind</th><th>Up-course gain</th><th>Turning</th><th>From gate</th></tr></thead><tbody>${branch('Tack now', c.tackNow)}${branch('Keep going', c.keepGoing)}</tbody></table></div>
       <p class="tack-timing">${timingText(c)}</p>
     </li>`;
   }).join('');

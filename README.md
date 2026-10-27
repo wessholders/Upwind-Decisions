@@ -35,7 +35,7 @@ The optional [wind inspection lab](wind-sandbox.html) remains available for drag
 
 - A purple **live computer** starts alongside you, sailing through the same wind with the same boat model, tack costs and finish rules. It makes decisions every 2 s from current wind observations. Its one-minute prediction freezes the current map; it has no future wind schedule or hindsight optimizer.
 - Start on starboard; the boat automatically follows the changing wind close-hauled.
-- Use **Tack** (keyboard T) to change tack. Both player and reference stop for the configured penalty. Space starts/pauses.
+- Use **Tack** (keyboard T) for a moving roll tack: the heading turns smoothly over 4.5 s, speed dips to about 80% in steady wind and recovers to the current wind target by 8 s. Repeated tacks are locked through recovery. The player and both computer boats share this maneuver. Space starts/pauses. See [tack behavior and tuning](docs/TACKS.md).
 - **Bear away to mark** aims for the closest safe crossing beside the windward mark, leaving it to port on the starboard finish approach. It also accepts a small change such as 2°. The target is the mark end of the gate, with hull/buoy clearance—not the gate midpoint. Select it early to arm the approach; it holds close-hauled until a safe, legal course is available. It never tacks automatically. **Return close-hauled** cancels it, as does a tack. The status explains lockouts and distinguishes armed from active steering. See [mark approach geometry](docs/MARK_APPROACH.md).
 - Cross the finite dark gate right to left on starboard. It extends upwind from the mark and rotates with the wind. Laylines are visual references, never boundaries.
 - New wind creates a seed; retry preserves the exact scenario. Advanced settings apply when you reset the leg.
@@ -55,7 +55,7 @@ This is a simplified training model. Horizontal fronts move along the down-cours
 
 See [the spatial model](docs/SPATIAL_WIND.md) for equations, numerical limits and validation.
 
-Trainer defaults: organic wind; 1000 m course; 5 kn base boat speed at 10 kn background wind; square-root pressure response; minimum 45° true wind angle; 5 s stationary tack penalty; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° individual regime/feature shift bound. Regime and feature deviations can combine inside patches; ambient wind outside patches stays at 0° relative to the course. No current, waves, calibrated polar curve, or apparent-wind model. Legacy uniform/traveling modes retain fixed boat speed.
+Trainer defaults: organic wind; 1000 m course; 5 kn base boat speed at 10 kn background wind; square-root pressure response; minimum 45° true wind angle outside tacks; 4.5 s moving tack with 80% minimum speed and recovery by 8 s; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° individual regime/feature shift bound. Regime and feature deviations can combine inside patches; ambient wind outside patches stays at 0° relative to the course. No current, waves, calibrated polar curve, or apparent-wind model. Legacy uniform/traveling modes retain fixed target speed with the same temporary tack loss.
 
 ## Architecture
 
@@ -68,6 +68,7 @@ src/engine/
   wind.js        seeded scenario generation and time-indexed interpolation
   finish.js      finite rotating gate and crossing interpolation
   physics.js     single authoritative boat model and commands
+  tack.js        shared smooth turn, speed envelope and recovery
   race.js        deterministic command replay
   optimizer.js   bounded beam search and tack counterfactuals
   scoring.js     route comparison and formatting
@@ -89,7 +90,7 @@ The integrator uses a maximum **0.25 s** outer step. Uniform wind retains midpoi
 
 The benchmark uses a 4 s coarse search followed by a 2 s search with a 140-state beam and 2 m position cells. It includes hold, tack, mark-approach, and close-hauled actions. Mark approach finds the nearest clearance-safe, legal crossing beside the buoy; it does not enumerate every legal bearing-away angle. The same geometry and finish clearance apply to the player, live computer and reference. The ranking heuristic estimates travel using frozen current wind and is not an admissible bound under future shifts. Pruning, time/space discretization, a finite horizon, and the restricted steering set can all miss better routes. **Best route found numerically; global optimality is not certified.**
 
-Tack feedback reconstructs each exact pre-tack state and shows local wind, recent encountered lift/header, sailing headings, up-course speed components and controlled short projections through the evolving wind with/without the tack, including its stop penalty. For the first eight tacks, a fresh search first continues for ten seconds from the identical preceding route, then replans. It reports absolute elapsed finish times and flags ties, better delayed routes or failures to find a valid continuation. These are measured tradeoffs and search comparisons, not proof of a unique timing or isolated cause.
+Tack feedback reconstructs each exact pre-tack state and shows local wind, recent encountered lift/header, initial/settled sailing headings, up-course speed components and controlled short projections through the evolving wind with/without the moving turn and speed recovery. Turning time is reported separately from elapsed time; the boat continues moving. For the first eight tacks, a fresh search first continues for ten seconds from the identical preceding route, then replans. It reports absolute elapsed finish times and flags ties, better delayed routes or failures to find a valid continuation. These are measured tradeoffs and search comparisons, not proof of a unique timing or isolated cause.
 
 The live computer is a separate heuristic policy. Its input is a plain current-time observation grid, local wind, boat state, course geometry and public boat parameters; it receives no scenario seed, generator, future features or future-sampling API. Its forecast and choice functions cannot access the authoritative scenario. The physics adapter subsequently moves its boat through the actual field, just like the player. Computer command logs replay through the same engine. Neither opponent is advertised as mathematically optimal.
 

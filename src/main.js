@@ -2,6 +2,7 @@ import { createTrainer } from './race-controller.js';
 import { DEFAULT_CONFIG } from './engine/config.js';
 import { normalize } from './engine/geometry.js';
 import { compassHeading, sailingSpeedKnots } from './engine/physics.js';
+import { recoveryRemaining } from './engine/tack.js';
 import { formatTime } from './engine/scoring.js';
 import { windAtPosition, windSampleAtPosition } from './engine/wind.js';
 import { courseView } from './views/course.js';
@@ -47,7 +48,8 @@ function render(includeWind = true) {
   const { boat, scenario } = state;
   const viewedBoat = state.inspection?.boat ?? boat, time = displayedTime();
   const active = state.phase === 'sailing' || state.phase === 'paused';
-  const stopped = boat.penaltyRemaining > 1e-8;
+  const turning = boat.penaltyRemaining > 1e-8;
+  const recovering = recoveryRemaining(boat.tackManeuver, boat.time) > 1e-8;
   const wind = windAtPosition(scenario, viewedBoat.position.x, viewedBoat.position.y, time);
   const local = windSampleAtPosition(scenario, viewedBoat.position.x, viewedBoat.position.y, time);
   ui.status.textContent = state.inspection ? `REFERENCE TACK ${state.inspection.number}` : state.phase === 'ready' ? 'READY TO SAIL' : state.phase === 'finished' ? 'LEG COMPLETE' : state.phase.toUpperCase();
@@ -76,9 +78,10 @@ function render(includeWind = true) {
   ui.elapsed.textContent = formatTime(viewedBoat.time);
   ui['distance-value'].textContent = viewedBoat.distance.toFixed(0);
   ui['tack-count'].textContent = viewedBoat.tacks;
-  ui['speed-value'].textContent = viewedBoat.penaltyRemaining > 1e-8 || viewedBoat.finished ? '0.0' : sailingSpeedKnots({ ...viewedBoat, time }, scenario).toFixed(1);
-  ui.tack.disabled = !active || stopped;
-  ui['tack-button-text'].textContent = stopped ? `Tacking · ${boat.penaltyRemaining.toFixed(1)} s` : 'Tack';
+  ui['speed-value'].textContent = viewedBoat.finished ? '0.0' : sailingSpeedKnots({ ...viewedBoat, time }, scenario).toFixed(1);
+  ui.tack.disabled = !active || recovering;
+  ui['tack-button-text'].textContent = turning ? `Tacking · ${boat.penaltyRemaining.toFixed(1)} s`
+    : recovering ? `Recovering · ${recoveryRemaining(boat.tackManeuver, boat.time).toFixed(1)} s` : 'Tack';
   const bear = bearControlView(state);
   ui.bear.disabled = bear.disabled; ui.bear.textContent = bear.label;
   ui.bear.setAttribute('aria-pressed', String(bear.pressed)); ui.bear.dataset.state = bear.state;

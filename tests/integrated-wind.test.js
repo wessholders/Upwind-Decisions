@@ -64,15 +64,16 @@ describe('organic wind in the decision trainer', () => {
       near(sailingHeading(boat, scenario), windAtPosition(scenario, p.x, p.y, 0) - 45);
     }
   });
-  it('preserves optional fixed speed and stationary tack penalties under organic wind', () => {
+  it('preserves the optional fixed wind response while applying a moving tack under organic wind', () => {
     const scenario = createScenario({ windField: 'organic', pressureExponent: 0, tackPenalty: 5 });
     const p = fieldForScenario(scenario).featuresAt(0)[0];
     const boat = { ...initialBoat(), position: { x: p.x, y: p.y } };
     assert.equal(sailingSpeedKnots(boat, scenario), 5);
     const tacking = advance(applyAction(boat, 'tack', scenario), scenario, 4.75);
-    assert.deepEqual(tacking.position, boat.position); near(tacking.penaltyRemaining, 0.25);
+    assert.notDeepEqual(tacking.position, boat.position); near(tacking.penaltyRemaining, 0.25);
     const moving = advance(tacking, scenario, 0.5);
     assert.ok(moving.distance > 0); near(moving.penaltyTime, 5);
+    near(sailingSpeedKnots(advance(tacking, scenario, 3.25), scenario), 5);
   });
   it('replays the integrated race after pause, retry and alternate frame grouping', () => {
     const a = createTrainer(), b = createTrainer();

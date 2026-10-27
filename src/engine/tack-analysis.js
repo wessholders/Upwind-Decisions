@@ -1,5 +1,5 @@
 import { STEP } from './config.js';
-import { applyAction, advance, sailingHeading, sailingSpeedKnots } from './physics.js';
+import { applyAction, advance, sailingHeading, settledHeading, sailingSpeedKnots } from './physics.js';
 import { replay } from './race.js';
 import { direction, signedAngle, normalize } from './geometry.js';
 import { windSampleAtPosition } from './wind.js';
@@ -43,10 +43,10 @@ export function traceTackOption(scenario, before, tackNow, duration = 30) {
     if (wind.kind === 'pocket') pocketSeconds += actual * wind.influence;
     boat = next;
   }
-  const elapsed = boat.time - before.time, stopped = boat.penaltyTime - startPenalty;
+  const elapsed = boat.time - before.time, turning = boat.penaltyTime - startPenalty;
   return { elapsed, position: { ...boat.position }, finished: boat.finished,
     averageWindKnots: elapsed > 0 ? windIntegral / elapsed : null,
-    movingSeconds: elapsed - stopped, penaltySeconds: stopped,
+    movingSeconds: elapsed, penaltySeconds: turning,
     distance: boat.distance - startDistance, upCourseMeters: boat.position.y - before.position.y,
     gateDistance: distanceToGate(boat, scenario), puffSeconds, pocketSeconds };
 }
@@ -54,7 +54,7 @@ export function traceTackOption(scenario, before, tackNow, duration = 30) {
 export function describeTack(scenario, route, commandIndex, number, decision, comparison) {
   const before = decision.boat, tacked = applyAction(before, 'tack', scenario);
   const wind = windSampleAtPosition(scenario, before.position.x, before.position.y, before.time);
-  const oldHeading = sailingHeading(before, scenario), newHeading = sailingHeading(tacked, scenario);
+  const oldHeading = sailingHeading(before, scenario), newHeading = settledHeading(tacked, scenario);
   const speed = sailingSpeedKnots(before, scenario);
   const previous = route.points.findLast(p => p.time <= Math.max(0, before.time - 15) + 1e-8) || route.points[0];
   const interveningTack = route.commands.some(c => c.action === 'tack' && c.time > previous.time + 1e-8 && c.time < before.time - 1e-8);

@@ -1,6 +1,7 @@
 import { KNOT_TO_MPS } from './config.js';
 import { direction, dot, radians, subtract } from './geometry.js';
-import { advance, applyAction, initialBoat, sailingSpeedKnots } from './physics.js';
+import { advance, applyAction, initialBoat, targetSpeedKnots } from './physics.js';
+import { recoveryRemaining, tackSpeedCost } from './tack.js';
 import { replay } from './race.js';
 import { windAtPosition } from './wind.js';
 import { describeTack, stateBeforeCommand, TACK_COMPARISON_DELAY, MAX_FINISH_COMPARISONS } from './tack-analysis.js';
@@ -13,9 +14,9 @@ function rank(boat, scenario) {
     const up = dot(remaining, v);
     const across = Math.abs(dot(remaining, { x: v.y, y: -v.x }));
     const angle = radians(scenario.config.minAngle);
-    const speed = sailingSpeedKnots(boat, scenario) * KNOT_TO_MPS;
+    const speed = targetSpeedKnots(boat, scenario) * KNOT_TO_MPS;
     const sailing = Math.max(Math.hypot(remaining.x, remaining.y), up / Math.cos(angle), across / Math.sin(angle)) / speed;
-    return sailing + boat.penaltyRemaining + (boat.tack === 'port' ? scenario.config.tackPenalty : 0);
+    return sailing + (boat.tack === 'port' ? tackSpeedCost(scenario.config) : 0);
 }
 function commandsFrom(node) {
     const commands = [];
@@ -33,7 +34,8 @@ export function search(scenario, options, start = initialBoat(), prefix = [], in
     while (beam.length && beam[0].boat.time < Math.min(horizon, best?.finish.time ?? Infinity)) {
         const cells = new Map();
         for (const parent of beam) {
-            const actions = parent.boat.penaltyRemaining > 0 ? ['hold'] : ['hold', 'tack', parent.boat.mode === 'close' ? 'bear' : 'close'];
+            const actions = parent.boat.penaltyRemaining > 1e-9 ? ['hold']
+                : ['hold', ...(recoveryRemaining(parent.boat.tackManeuver, parent.boat.time) > 1e-9 ? [] : ['tack']), parent.boat.mode === 'close' ? 'bear' : 'close'];
             for (const action of actions) {
                 const acted = applyAction(parent.boat, action, scenario);
                 const boat = advance(acted, scenario, options.interval);
@@ -48,7 +50,8 @@ export function search(scenario, options, start = initialBoat(), prefix = [], in
                     }
                     continue;
                 }
-                const key = `${Math.round(boat.position.x / options.cell)},${Math.round(boat.position.y / options.cell)},${boat.tack},${boat.mode},${boat.penaltyRemaining.toFixed(2)}`;
+                const phase = boat.tackManeuver ? `${(boat.time - boat.tackManeuver.start).toFixed(2)},${boat.tackManeuver.entryOffset.toFixed(1)},${boat.tackManeuver.entrySpeed.toFixed(2)}` : '-';
+                const key = `${Math.round(boat.position.x / options.cell)},${Math.round(boat.position.y / options.cell)},${boat.tack},${boat.mode},${phase}`;
                 const score = rank(boat, scenario);
                 const previous = cells.get(key);
                 if (!previous || score < previous.score - 1e-8 || (Math.abs(score - previous.score) < 1e-8 && boat.distance < previous.node.boat.distance))

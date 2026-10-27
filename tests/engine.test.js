@@ -31,14 +31,16 @@ describe('sailing geometry and shared movement', () => {
         assert.strictEqual(sailingHeading(initialBoat(), s), -30);
         assert.ok(gateEnd(s, 0).x > 0);
     });
-    it('charges stationary penalties exactly, including partial steps', () => {
+    it('tracks moving turn time exactly, including partial steps', () => {
         const s = scenario({ tackPenalty: 5.1 });
         const tacked = applyAction(initialBoat(), 'tack', s);
         assert.strictEqual(tacked.tack, 'port');
-        assert.deepStrictEqual(advance(tacked, s, 5).position, { x: 0, y: 0 });
+        const turning = advance(tacked, s, 5);
+        assert.ok(turning.distance > 10);
+        closeTo(turning.penaltyRemaining, 0.1, 10);
         const moving = advance(tacked, s, 6);
         closeTo(moving.penaltyTime, 5.1, 10);
-        closeTo(moving.distance, 0.9 * 5 * KNOT_TO_MPS, 9);
+        assert.ok(moving.distance > 6 * 4 * KNOT_TO_MPS && moving.distance < 6 * 5 * KNOT_TO_MPS);
         assert.strictEqual(applyAction(advance(tacked, s, 1), 'tack', s).tacks, 1);
     });
     it('allows immediate tacks and zero penalties without artificial minimum time', () => {
@@ -138,16 +140,16 @@ describe('finite rotating finish gate', () => {
     });
 });
 describe('analytical baselines and optimizer legality', () => {
-    it('matches the independent steady-wind time and distance with two tacks', () => {
-        const s = scenario();
+    it('matches the independent steady-wind zero-duration baseline with two tacks', () => {
+        const s = scenario({ tackPenalty: 0 });
         const safeCrossingHeight = 1000 + s.config.boatLength;
         const sailingTime = safeCrossingHeight / (5 * KNOT_TO_MPS * Math.cos(Math.PI / 4));
         const first = 10;
-        const route = replay(s, [{ time: first, action: 'tack' }, { time: first + 5 + sailingTime / 2, action: 'tack' }], sailingTime + 20);
+        const route = replay(s, [{ time: first, action: 'tack' }, { time: first + sailingTime / 2, action: 'tack' }], sailingTime + 20);
         assert.strictEqual(route.finish.finished, true);
-        closeTo(route.finish.time, sailingTime + 10, 7);
+        closeTo(route.finish.time, sailingTime, 7);
         closeTo(route.finish.distance, safeCrossingHeight * Math.sqrt(2), 6);
-        closeTo(route.finish.penaltyTime, 10, 8);
+        closeTo(route.finish.penaltyTime, 0, 8);
     });
     it('finds and reproduces a legal route near the analytical steady-wind optimum', { timeout: 20000 }, () => {
         const s = scenario({ courseLength: 100 });
@@ -162,7 +164,7 @@ describe('analytical baselines and optimizer legality', () => {
         assert.ok(route.finish.time < lowerBound + 18);
         assert.deepStrictEqual(replay(s, route.commands, route.finish.time + 1).finish, route.finish);
         for (const point of route.points) {
-            assert.ok(Math.abs(signedAngle(sailingHeading(point, s) - windAt(s, point.time))) >= 45 - 1e-8);
+            if (point.penaltyRemaining < 1e-9) assert.ok(Math.abs(signedAngle(sailingHeading(point, s) - windAt(s, point.time))) >= 45 - 1e-8);
             assert.ok(point.distance <= point.time * s.config.speedKnots * KNOT_TO_MPS + 1e-7);
         }
         assert.deepStrictEqual(search(s, { interval: 2, width: 100, cell: 1 }).route?.commands, route.commands);

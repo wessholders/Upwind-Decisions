@@ -78,19 +78,17 @@ describe('spatial wind field and traveling fronts', () => {
     }
   });
 
-  it('changes a stationary boat wind only when the region arrives at that position', () => {
+  it('changes wind at a fixed position only when the region arrives there', () => {
     const s = traveling();
     const y = 50;
     const leading = 10 + (windEntryHeight(s) - y) / 3;
     assert.equal(windAtPosition(s, 0, y, leading), 0);
     closeTo(windAtPosition(s, 0, y, leading + 5), 6, 10);
     assert.equal(windAtPosition(s, 0, y, leading + 10), 12);
-    const stopped = { ...initialBoat(), position: { x: 0, y }, time: leading, penaltyRemaining: 20 };
-    const later = advance(stopped, s, 10);
-    assert.deepEqual(later.position, stopped.position);
+    const later = { ...initialBoat(), position: { x: 0, y }, time: leading + 10 };
     assert.equal(compassHeading(later, s), 327);
     assert.equal(later.tack, 'starboard');
-    assert.equal(later.penaltyTime, 10);
+    assert.equal(later.penaltyTime, 0);
   });
 
   it('encounters the front earlier while sailing toward it and updates the compass locally', () => {
@@ -234,9 +232,9 @@ describe('spatial hindsight benchmark', () => {
     const { commands, finish, points } = result.route;
     assert.deepEqual(replay(s, commands, finish.time + 1).finish, finish);
     assert.equal(finish.tack, 'starboard');
-    closeTo(finish.penaltyTime, finish.tacks * 5, 8);
+    closeTo(finish.penaltyTime, finish.tacks * s.config.tackPenalty, 8);
     assert.ok(points.some(p => Math.abs(windAt(s, p.time) - windAtPosition(s, p.position.x, p.position.y, p.time)) > 5));
-    for (const p of points) assert.ok(validHeading(sailingHeading(p, s), windAtPosition(s, p.position.x, p.position.y, p.time), p.tack, 45));
+    for (const p of points) if (p.penaltyRemaining < 1e-9) assert.ok(validHeading(sailingHeading(p, s), windAtPosition(s, p.position.x, p.position.y, p.time), p.tack, 45));
     const uniform = { ...s, config: { ...s.config, windField: 'uniform' } };
     assert.notDeepEqual(replay(uniform, commands, finish.time + 1).finish.position, finish.position);
   });
@@ -249,7 +247,7 @@ describe('spatial hindsight benchmark', () => {
     const route = search(s, { interval: 2, width: 140, cell: 2 }).route;
     assert.ok(route?.finish.finished);
     assert.deepEqual(replay(s, route.commands, route.finish.time + 1).finish, route.finish);
-    closeTo(route.finish.penaltyTime, route.finish.tacks * 5, 7);
+    closeTo(route.finish.penaltyTime, route.finish.tacks * s.config.tackPenalty, 7);
     assert.ok(route.points.some(p => Math.abs(windAtPosition(s, p.position.x, p.position.y, p.time)) > 1));
   });
 

@@ -40,7 +40,7 @@ describe('vanilla race lifecycle', () => {
     const { scenario, commands, boat } = trainer.state;
     assert.deepEqual(replay(scenario, commands, boat.time).finish, boat);
     assert.equal(commands.length, 2);
-    assert.equal(boat.penaltyTime, 10);
+    assert.equal(boat.penaltyTime, 2 * scenario.config.tackPenalty);
   });
 
   it('finishes an entire leg and cannot restart the finished clock', () => {

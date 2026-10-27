@@ -28,12 +28,12 @@ describe('measured hindsight tack explanations', () => {
     assert.equal(result.comparisons.at(-1).toTack, 'starboard');
     assert.doesNotThrow(() => structuredClone(result));
   });
-  it('counts the stationary tack penalty in both short-option projections without inventing a pressure gain', () => {
+  it('counts continuous movement and turn time without inventing a pressure gain', () => {
     const scenario = createScenario({ windMode: 'steady' }), boat = initialBoat();
     const now = traceTackOption(scenario, boat, true), hold = traceTackOption(scenario, boat, false);
     near(now.averageWindKnots, 10); near(hold.averageWindKnots, 10);
-    near(now.penaltySeconds, 5); near(hold.penaltySeconds, 0);
-    near(now.movingSeconds, 25); near(hold.movingSeconds, 30);
+    near(now.penaltySeconds, 4.5); near(hold.penaltySeconds, 0);
+    near(now.movingSeconds, 30); near(hold.movingSeconds, 30);
     assert.ok(now.upCourseMeters < hold.upCourseMeters);
   });
   it('identifies a header versus a lift on the previous starboard tack', () => {

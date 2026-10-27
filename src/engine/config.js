@@ -1,7 +1,15 @@
 export const STEP = 0.25;
 export const KNOT_TO_MPS = 1852 / 3600;
+export const EXPERT_TACK = {
+    durationSeconds: 4.5, minSpeedFraction: 0.8, totalRecoverySeconds: 8,
+    minimumAtTurnFraction: 0.8, integrationStepSeconds: 0.05,
+};
 export const DEFAULT_CONFIG = {
-    courseLength: 1000, speedKnots: 5, minAngle: 45, tackPenalty: 5,
+    courseLength: 1000, speedKnots: 5, minAngle: 45,
+    // Keep the existing settings key; it now means moving turn duration.
+    tackPenalty: EXPERT_TACK.durationSeconds,
+    tackMinSpeedFraction: EXPERT_TACK.minSpeedFraction,
+    tackRecoverySeconds: EXPERT_TACK.totalRecoverySeconds,
     baseline: 0, boatLength: 5, gateBoatLengths: 20,
     windMode: 'oscillating', difficulty: 'easy', maxShift: 15,
     shiftDuration: 40, seed: 314159,
@@ -16,7 +24,8 @@ export const DEFAULT_TRAINER_CONFIG = { ...DEFAULT_CONFIG, windField: 'organic' 
 export function validateConfig(config) {
     const ranges = {
         courseLength: [100, 5000], speedKnots: [1, 20], minAngle: [30, 60],
-        tackPenalty: [0, 30], baseline: [0, 359], boatLength: [1, 30],
+        tackPenalty: [0, 30], tackMinSpeedFraction: [0.1, 1], tackRecoverySeconds: [0, 60],
+        baseline: [0, 359], boatLength: [1, 30],
         gateBoatLengths: [1, 30], maxShift: [0, 30], shiftDuration: [2, 300],
         seed: [0, 4294967295],
         propagationSpeed: [0.5, 20], transitionWidth: [1, 500],

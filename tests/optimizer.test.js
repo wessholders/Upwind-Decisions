@@ -19,7 +19,9 @@ describe('changing-wind route search', () => {
         assert.strictEqual(route.finish.tack, 'starboard');
         assert.ok(route.finish.tacks >= 2);
         closeTo(route.finish.penaltyTime, route.finish.tacks * scenario.config.tackPenalty, 8);
-        closeTo(route.finish.distance, (route.finish.time - route.finish.penaltyTime) * scenario.config.speedKnots * KNOT_TO_MPS, 7);
+        const maximumLoss = route.finish.tacks * (1 - scenario.config.tackMinSpeedFraction) * Math.max(scenario.config.tackPenalty, scenario.config.tackRecoverySeconds) / 2;
+        assert.ok(route.finish.distance >= (route.finish.time - maximumLoss) * scenario.config.speedKnots * KNOT_TO_MPS - 0.001);
+        assert.ok(route.finish.distance <= route.finish.time * scenario.config.speedKnots * KNOT_TO_MPS);
         assert.deepStrictEqual(replay(scenario, route.commands, route.finish.time + 1).finish, route.finish);
     }, 20000);
     it('retains a faster known player route and derives reproducible tack comparisons', { timeout: 20000 }, () => {
@@ -50,13 +52,17 @@ describe('changing-wind route search', () => {
         assert.ok(benchmark.route.finish.time <= computer.finish.time + 1e-7);
         assert.deepEqual(replay(scenario, benchmark.route.commands, benchmark.route.finish.time + 1).finish, benchmark.route.finish);
     });
-    it('stays close to the independent 1000 m steady-wind lower bound including both tack costs', { timeout: 30000 }, () => {
+    it('stays close to the independent straight-leg 1000 m baseline with moving tack costs', { timeout: 30000 }, () => {
         const scenario = createScenario({ ...DEFAULT_CONFIG, windMode: 'steady' });
         const result = search(scenario, { interval: 2, width: 140, cell: 2 });
-        const lowerBound = 1000 / (5 * KNOT_TO_MPS / Math.sqrt(2)) + 2 * scenario.config.tackPenalty;
+        const lowerBound = 1000 / (5 * KNOT_TO_MPS / Math.sqrt(2));
         assert.strictEqual(result.route?.finish.finished, true);
         assert.ok(result.route.finish.time >= lowerBound - 1e-7);
-        assert.ok(result.route.finish.time < lowerBound + 4);
-        assert.strictEqual(result.route.finish.tacks, 2);
+        assert.ok(result.route.finish.time < lowerBound + 6);
+        // Moving tacks are cheap; the 2 s bounded search can retain an extra
+        // pair to improve its discretized finish. Do not assert a unique path.
+        assert.ok(result.route.finish.tacks >= 2 && result.route.finish.tacks <= 4);
+        const tacks = result.route.commands.filter(c => c.action === 'tack');
+        for (let i = 1; i < tacks.length; i++) assert.ok(tacks[i].time - tacks[i - 1].time >= scenario.config.tackRecoverySeconds);
     });
 });

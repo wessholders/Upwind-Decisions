@@ -177,7 +177,7 @@ try {
   await click('tack');
   assert.equal(await evaluate(`document.getElementById('bear').disabled`), true);
   assert.match(await evaluate(`document.getElementById('bear-status').textContent`), /tack is complete/);
-  assert.equal(await evaluate(`document.getElementById('speed-value').textContent`), '0.0');
+  assert.ok(Number(await evaluate(`document.getElementById('speed-value').textContent`)) > 0);
   assert.equal(await evaluate(`document.getElementById('tack-count').textContent`), '1');
   await click('start');
   const frozenRace = await evaluate(`({ time: document.getElementById('elapsed').textContent, canvas: document.getElementById('wind-canvas').toDataURL() })`);
@@ -235,11 +235,21 @@ try {
   await waitFor(`document.getElementById('startup-error')?.hidden === true`);
   const raceResult = await evaluate(`(() => {
     const mode = document.getElementById('wind-mode'); mode.value = 'steady'; mode.dispatchEvent(new Event('change'));
-    for (const [name, value] of Object.entries({ courseLength: 100, maxShift: 0 })) {
+    for (const [name, value] of Object.entries({ courseLength: 100, maxShift: 0, windContrast: 0, backgroundWindKnots: 10 })) {
       const input = document.querySelector('[name="' + name + '"]'); input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
     }
     document.getElementById('settings-form').requestSubmit();
-    document.getElementById('start').click(); document.getElementById('tack').click();
+    document.getElementById('start').click();
+    const entryHeading = Number(document.getElementById('heading-value').textContent);
+    document.getElementById('tack').click();
+    const tackTrace = { entryHeading, startHeading: Number(document.getElementById('heading-value').textContent), samples: [] };
+    for (let i = 0; i < 32; i++) {
+      window.__stepQA(62.5);
+      const p = document.querySelector('#course .player-boat').transform.baseVal.getItem(0).matrix;
+      tackTrace.samples.push({ time: (i + 1) / 4, x: p.e, y: -p.f,
+        heading: Number(document.getElementById('heading-value').textContent), speed: Number(document.getElementById('speed-value').textContent),
+        tackDisabled: document.getElementById('tack').disabled, bearDisabled: document.getElementById('bear').disabled });
+    }
     let frames = 0;
     for (; frames < 1600 && document.getElementById('status').textContent !== 'LEG COMPLETE'; frames++) {
       const y = Number(document.getElementById('course').getAttribute('aria-label').match(/and (-?[0-9]+) meters up/)[1]);
@@ -247,9 +257,17 @@ try {
       window.__stepQA(62.5);
     }
     return { frames, status: document.getElementById('status').textContent, elapsed: document.getElementById('elapsed').textContent,
-      field: document.getElementById('wind-field').value, tacks: document.getElementById('tack-count').textContent };
+      field: document.getElementById('wind-field').value, tacks: document.getElementById('tack-count').textContent, tackTrace };
   })()`);
   assert.equal(raceResult.status, 'LEG COMPLETE'); assert.equal(raceResult.field, 'organic'); assert.equal(raceResult.tacks, '2');
+  assert.equal(raceResult.tackTrace.startHeading, raceResult.tackTrace.entryHeading);
+  const tackSamples = raceResult.tackTrace.samples;
+  assert.equal(tackSamples[17].heading, 45); assert.ok(tackSamples[17].tackDisabled); assert.equal(tackSamples[17].bearDisabled, false);
+  assert.equal(tackSamples[31].tackDisabled, false); assert.equal(tackSamples[31].speed, 5);
+  assert.ok(Math.abs(Math.min(...tackSamples.map(p => p.speed)) - 4) < 0.1);
+  for (let i = 1; i < tackSamples.length; i++) assert.ok(Math.hypot(tackSamples[i].x - tackSamples[i - 1].x, tackSamples[i].y - tackSamples[i - 1].y) > 0.4);
+  raceResult.tackTrace = { entryHeading: raceResult.tackTrace.entryHeading, turnEndHeading: tackSamples[17].heading,
+    minimumSpeed: Math.min(...tackSamples.map(p => p.speed)), recoveredSpeed: tackSamples[31].speed, movingSamples: tackSamples.length };
   await waitFor(`document.querySelector('#results table') !== null`);
   assert.equal(await evaluate(`document.getElementById('reference-legend').hidden`), false);
   assert.ok(await evaluate(`document.querySelectorAll('#results .tack-card').length >= 2`));
@@ -300,18 +318,21 @@ try {
       tacks: document.getElementById('tack-count').textContent };
   })()`);
   assert.ok(bearingResult.enabled); assert.equal(bearingResult.state, 'active');
-  assert.equal(bearingResult.headingBefore, 315); assert.equal(bearingResult.headingAfter, 313);
+  assert.equal(bearingResult.headingBefore, 315);
+  assert.ok(bearingResult.headingBefore - bearingResult.headingAfter > 0 && bearingResult.headingBefore - bearingResult.headingAfter <= 4);
   assert.ok(bearingResult.finishOffsetMeters > 3 && bearingResult.finishOffsetMeters < 6);
   assert.ok(bearingResult.finished); assert.equal(bearingResult.tacks, '2');
   // A fast, nearly reaching approach previously tightened toward the buoy
   // after its closest point. Retain the displayed target until the finish.
   const reachingResult = await evaluate(`(() => {
     document.getElementById('retry').click();
-    const speed = document.querySelector('[name="speedKnots"]'); speed.value = 20;
-    speed.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('settings-form').requestSubmit();
+    for (const [name, value] of Object.entries({ speedKnots: 20, courseLength: 300 })) {
+      const input = document.querySelector('[name="' + name + '"]'); input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    document.getElementById('settings-form').requestSubmit();
     document.getElementById('start').click(); document.getElementById('tack').click();
     const position = () => document.querySelector('#course .player-boat').transform.baseVal.getItem(0).matrix;
-    for (let i = 0; i < 500 && -position().f < 57.5; i++) window.__stepQA(62.5);
+    for (let i = 0; i < 500 && -position().f < 160; i++) window.__stepQA(62.5);
     document.getElementById('tack').click();
     for (let i = 0; i < 500 && (document.getElementById('tack').disabled || position().e > 25); i++) window.__stepQA(62.5);
     const before = { x: position().e, y: -position().f };
@@ -324,7 +345,7 @@ try {
     }
     return { before, finished: document.getElementById('status').textContent === 'LEG COMPLETE',
       targets: targets.length, targetDriftMeters: Math.max(...targets) - Math.min(...targets),
-      finishOffsetMeters: -position().f - 100, tacks: document.getElementById('tack-count').textContent };
+      finishOffsetMeters: -position().f - 300, tacks: document.getElementById('tack-count').textContent };
   })()`);
   assert.ok(reachingResult.finished); assert.equal(reachingResult.tacks, '2');
   assert.ok(reachingResult.targets > 2); assert.ok(reachingResult.targetDriftMeters < 1e-6);
