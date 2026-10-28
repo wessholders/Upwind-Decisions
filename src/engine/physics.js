@@ -4,6 +4,8 @@ import { direction, headingTo, interpolate, normalize, signedAngle, closestMarkA
 import { finishFraction, gateEnd } from './finish.js';
 import { windAtPosition, windIntegrationStep, windSampleAtPosition } from './wind.js';
 import { performanceTarget, performanceSpeed, speedResponse, usesPolar } from './performance.js';
+import { courseGeometry, finishApproach } from './course.js';
+import { isUpwindFinish } from './course-config.js';
 export const initialBoat = () => ({
     position: { x: 0, y: 0 }, time: 0, tack: 'starboard', mode: 'close',
     penaltyRemaining: 0, penaltyTime: 0, tackManeuver: null, speedKnots: null, distance: 0, tacks: 0, finished: false,
@@ -12,9 +14,11 @@ export function gateAimGeometry(boat, scenario, time = boat.time) {
     const wind = windAtPosition(scenario, boat.position.x, boat.position.y, time);
     const close = wind + (boat.tack === 'starboard' ? -scenario.config.minAngle : scenario.config.minAngle);
     const end = gateEnd(scenario, time);
-    const mark = { x: 0, y: scenario.config.courseLength };
-    const approach = closestMarkApproach(boat.position, wind, boat.tack, scenario.config.minAngle,
-        mark, end, markApproachClearance(scenario.config.boatLength), boat.markAimDistance ?? null);
+    const course = courseGeometry(scenario, time), mark = course.mark ?? course.center;
+    const approach = isUpwindFinish(scenario.config)
+        ? finishApproach(boat.position, wind, boat.tack, scenario.config.minAngle, course, boat.markAimDistance ?? null)
+        : closestMarkApproach(boat.position, wind, boat.tack, scenario.config.minAngle,
+            mark, end, markApproachClearance(scenario.config.boatLength), boat.markAimDistance ?? null);
     const target = approach?.target ?? mark;
     const direct = headingTo(boat.position, target);
     const angle = signedAngle(direct - wind);
@@ -130,8 +134,8 @@ function advanceThroughField(boat, scenario, duration) {
         // RK2: sample the field at a predicted midpoint POSITION and time.
         const initial = direction(sailingHeading(current, scenario));
         if (current.mode === 'gate') {
-            const mark = { x: 0, y: scenario.config.courseLength }, line = subtract(gateEnd(scenario, current.time), mark);
-            const side = cross(line, subtract(current.position, mark)), rate = cross(line, initial) * initialSpeed;
+            const course = courseGeometry(scenario, current.time), line = subtract(course.end, course.start);
+            const side = course.sign * cross(line, subtract(current.position, course.start)), rate = course.sign * cross(line, initial) * initialSpeed;
             if (side < -1e-10 && rate > 1e-10) {
                 // Keep the RK2 midpoint on the approach side. Otherwise a
                 // midpoint already beyond the finish sees the mark behind it
@@ -149,7 +153,7 @@ function advanceThroughField(boat, scenario, duration) {
             : speedResponse(scenario.config, initialSpeed / KNOT_TO_MPS, target, dt).mean) * KNOT_TO_MPS;
         const v = direction(sailingHeading(midpoint, scenario, current.time + dt / 2));
         const position = { x: current.position.x + v.x * speed * dt, y: current.position.y + v.y * speed * dt };
-        const fraction = turning(current.tackManeuver, current.time) ? null
+        const fraction = turning(current.tackManeuver, current.time) && !isUpwindFinish(scenario.config) ? null
             : finishFraction(scenario, current.position, position, current.time, dt, current.tack);
         const actualTime = current.time + dt * (fraction ?? 1);
         const actualPosition = fraction === null ? position : interpolate(current.position, position, fraction);

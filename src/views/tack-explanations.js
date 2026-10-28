@@ -14,7 +14,8 @@ function timingText(c) {
 function headline(c) {
   if (c.outcome === 'alternative-faster') return 'A better timing was found in the comparison';
   if (c.outcome === 'near-tie') return 'Several tack timings perform similarly';
-  if (c.finalTack && c.toTack === 'starboard') return 'Set up the final starboard approach';
+  if (c.finalTack && c.requiredFinishTack === null) return 'Set up the finish-line approach';
+  if (c.finalTack && c.toTack === (c.requiredFinishTack ?? 'starboard')) return `Set up the final ${c.toTack} approach`;
   if (c.trend === 'header') return 'The previous tack has headed';
   if (c.tackNow.averageWindKnots - c.keepGoing.averageWindKnots > 0.4) return 'More pressure on the tack-now branch';
   if (c.newUpCourseKnots - c.oldUpCourseKnots > 0.15) return 'The new tack points farther up the course';
@@ -25,8 +26,9 @@ export function tackExplanationsView(comparisons, settings) {
     const direction = c.wind.compassDirection, right = c.boat.position.x >= 0;
     const trend = c.trend === 'header' || c.trend === 'lift'
       ? ` Over the previous ${c.observationSeconds.toFixed(0)} s, the wind encountered along the reference route changed ${Math.abs(c.observedWindChange).toFixed(1)}°, ${c.trend === 'header' ? 'heading' : 'lifting'} its previous tack.` : '';
-    const final = c.finalTack && c.toTack === 'starboard'
-      ? ' This is its final tack onto starboard, required for the right-to-left crossing of the finish gate.' : '';
+    const final = c.finalTack && c.requiredFinishTack === null ? ' This is its final tack before crossing the fixed finish line; either tack may finish.'
+      : c.finalTack && c.toTack === (c.requiredFinishTack ?? 'starboard')
+        ? ` This is its final tack onto ${c.toTack}, required to leave the windward mark to ${c.roundingSide ?? 'port'}.` : '';
     const branch = (name, b) => `<tr><th scope="row">${name}</th><td>${b.averageWindKnots?.toFixed(1) ?? '—'} kn</td><td>${b.upCourseMeters.toFixed(0)} m</td><td>${b.penaltySeconds.toFixed(1)} s</td><td>${b.gateDistance.toFixed(0)} m${b.finished ? ' · finished' : ''}</td></tr>`;
     return `<li class="tack-card" data-outcome="${escapeHtml(c.outcome)}">
       <div class="tack-card-top"><strong>Tack ${c.number} · ${formatTime(c.time)} (${c.time.toFixed(1)} s)</strong><button type="button" data-inspect-tack="${c.number}">View wind at this tack</button></div>

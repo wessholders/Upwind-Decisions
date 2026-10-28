@@ -33,8 +33,8 @@ async function evaluate(expression) {
   if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
   return result.result.value;
 }
-async function waitFor(expression) {
-  for (let i = 0; i < 100; i++) {
+async function waitFor(expression, timeoutMs = 5000) {
+  for (let i = 0; i < Math.ceil(timeoutMs / 50); i++) {
     if (await evaluate(expression)) return;
     await new Promise(resolve => setTimeout(resolve, 50));
   }
@@ -394,9 +394,79 @@ try {
   assert.ok(reachingResult.peakSpeed > reachingResult.entrySpeed + 0.2, 'Bearing away must gradually accelerate toward the reaching polar.');
   assert.ok(reachingResult.targets > 2); assert.ok(reachingResult.targetDriftMeters < 1e-6);
   assert.ok(reachingResult.finishOffsetMeters > 3 && reachingResult.finishOffsetMeters < 6);
+  // Exercise both new modes through the same consolidated settings and helm.
+  const courseModes = [];
+  assert.deepEqual(await evaluate(`Array.from(document.getElementById('course-mode').options).map(o => o.textContent)`), ['Round to Port', 'Round to Starboard', 'Finish Upwind']);
+  for (const mode of ['round-starboard', 'finish-upwind']) {
+    const initial = await evaluate(`(() => {
+      document.getElementById('retry').click();
+      const select = document.getElementById('course-mode'); select.value = '${mode}'; select.dispatchEvent(new Event('change'));
+      for (const [name, value] of Object.entries({ courseLength: 100, speedScale: '${mode}' === 'finish-upwind' ? 4 : 1 })) {
+        const input = document.querySelector('[name="' + name + '"]');
+        if (!input.disabled) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
+      }
+      document.getElementById('settings-form').requestSubmit();
+      const line = document.querySelector('#course .finish-line');
+      const guides = Array.from(document.querySelectorAll('#course .finish-layline'));
+      return { status: document.getElementById('status').textContent, mode: select.value,
+        length: Number(document.querySelector('[name="courseLength"]').value),
+        locked: document.querySelector('[name="courseLength"]').disabled,
+        line: line?.getAttribute('d'), guidePaths: guides.map(p => p.getAttribute('d')),
+        guideLengths: guides.map(p => p.getTotalLength()), pins: document.querySelectorAll('#course .finish-pin').length,
+        hasMark: document.getElementById('course').textContent.includes('WINDWARD MARK') };
+    })()`);
+    assert.equal(initial.status, 'READY TO SAIL'); assert.equal(initial.mode, mode);
+    if (mode === 'finish-upwind') {
+      assert.equal(initial.length, 1000); assert.ok(initial.locked); assert.equal(initial.pins, 2); assert.equal(initial.hasMark, false);
+      assert.equal(initial.guidePaths.length, 4);
+      for (const length of initial.guideLengths) assert.ok(Math.abs(length - 200) < .001);
+      await click('follow-boat');
+      assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('#course .finish-layline')).map(p => p.getAttribute('d'))`), initial.guidePaths);
+      for (const [width, height] of [[1440, 1100], [390, 844]]) {
+        await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 });
+        await waitFor(`(async () => {
+          const { courseProjection } = await import('./src/views/wind-canvas.js');
+          const svg = document.getElementById('course'), style = getComputedStyle(svg);
+          const padding = { left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight), top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom) };
+          const bounds = courseProjection(svg.getAttribute('viewBox'), svg.clientWidth, svg.clientHeight, padding).visibleBounds;
+          const clip = document.querySelector('#finish-guides-clip rect');
+          return Math.abs(Number(clip.getAttribute('width')) - (bounds.maxX - bounds.minX)) < .001;
+        })()`);
+      }
+      await screenshot('course-finish-upwind-follow'); await click('full-course');
+    } else { assert.equal(initial.hasMark, true); assert.equal(initial.locked, false); }
+    await screenshot('course-' + mode);
+    await click('start');
+    let status = '';
+    for (let chunk = 0; chunk < 20 && status !== 'LEG COMPLETE'; chunk++) {
+      status = await evaluate(`(() => {
+        for (let i = 0; i < 100 && document.getElementById('status').textContent !== 'LEG COMPLETE'; i++) {
+          const p = document.querySelector('#course .player-boat').transform.baseVal.getItem(0).matrix;
+          if (document.getElementById('tack-label').textContent === 'STARBOARD TACK' && -p.f >= ('${mode}' === 'finish-upwind' ? 500 : 55) && !document.getElementById('tack').disabled) document.getElementById('tack').click();
+          window.__stepQA(125);
+        }
+        return document.getElementById('status').textContent;
+      })()`);
+    }
+    assert.equal(status, 'LEG COMPLETE', mode);
+    const finish = await evaluate(`(() => { const p = document.querySelector('#course .player-boat').transform.baseVal.getItem(0).matrix;
+      return { x: p.e, y: -p.f, tack: document.getElementById('tack-label').textContent,
+        line: document.querySelector('#course .finish-line')?.getAttribute('d') }; })()`);
+    assert.equal(finish.tack, 'PORT TACK');
+    if (mode === 'finish-upwind') { assert.ok(Math.abs(finish.x) <= 50); assert.ok(Math.abs(finish.y - 1000) < .001); assert.equal(finish.line, initial.line); }
+    await waitFor(`document.querySelector('#results table') !== null`, 20000);
+    assert.ok(await evaluate(`document.querySelectorAll('#results .tack-card').length > 0`));
+    await click('retry');
+    assert.equal(await evaluate(`document.getElementById('course-mode').value`), mode);
+    assert.equal(await evaluate(`document.getElementById('elapsed').textContent`), '0:00');
+    courseModes.push({ mode, finish, fourLiveLaylines: initial.guidePaths.length === 4 });
+  }
+  await evaluate(`(() => { const select = document.getElementById('course-mode'); select.value = 'round-port'; select.dispatchEvent(new Event('change')); document.getElementById('settings-form').requestSubmit(); })()`);
+  assert.equal(await evaluate(`document.getElementById('course').textContent.includes('WINDWARD MARK')`), true);
+  assert.equal(await evaluate(`document.querySelectorAll('#course .finish-layline').length`), 0);
   await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: injection.identifier });
   assert.equal(errors.length, 0, JSON.stringify(errors));
   console.log(JSON.stringify({ desktop: '1440×1100', mobile: '390×844', runtimeErrors: errors.length,
     controls: 'sailing and live opponent, pause, retry, settings, complete leg, hindsight explanations, tack-time inspection, computer finish comparison, armed and active gate aiming', rendererCheck, contrast, workerResult, raceResult, bearingResult,
-    reachingResult, waterViewport, screenshots: 'artifacts.local/wind-*.png and trainer-*.png' }, null, 2));
+    reachingResult, waterViewport, courseModes, screenshots: 'artifacts.local/wind-*.png, trainer-*.png and course-*.png' }, null, 2));
 } finally { socket.close(); }

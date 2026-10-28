@@ -1,4 +1,5 @@
 import { BOAT_PROFILES } from './boat-profile.js';
+import { COURSE_MODE, COURSE_LABEL } from './course-config.js';
 export const STEP = 0.25;
 export const KNOT_TO_MPS = 1852 / 3600;
 export const EXPERT_TACK = {
@@ -7,6 +8,7 @@ export const EXPERT_TACK = {
 };
 export const DEFAULT_CONFIG = {
     courseLength: 1000, speedKnots: 5, minAngle: 45,
+    courseMode: COURSE_MODE.ROUND_PORT,
     performanceModel: 'polar', boatProfile: 'dinghy-main-jib', speedScale: 1,
     // Keep the existing settings key; it now means moving turn duration.
     tackPenalty: EXPERT_TACK.durationSeconds,
@@ -42,6 +44,7 @@ export function validateConfig(config) {
     }
     if (!Number.isInteger(config.seed))
         throw new Error('Seed must be an integer.');
+    if (!Object.hasOwn(COURSE_LABEL, config.courseMode)) throw new Error('Unknown course mode.');
     if (!['polar', 'legacy-pressure'].includes(config.performanceModel) || !Object.hasOwn(BOAT_PROFILES, config.boatProfile))
         throw new Error('Unknown boat performance model or profile.');
     if (!['steady', 'persistent', 'oscillating'].includes(config.windMode))

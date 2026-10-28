@@ -95,6 +95,7 @@
               <p>Boat speed follows a provisional main + jib polar using local wind strength and true wind angle, with gradual acceleration and deceleration. Puffs and pockets change that target. No spinnaker or automatic sail changes are modeled.</p>
             </div>
             <div class="settings-grid">
+              <label>Course mode<select id="course-mode" name="courseMode"><option value="round-port">Round to Port</option><option value="round-starboard">Round to Starboard</option><option value="finish-upwind">Finish Upwind</option></select></label>
               <label>Course length (m)<input name="courseLength" type="number" value="1000" min="100" max="5000" step="100" required></label>
               <label>Baseline wind from (°)<input name="baseline" type="number" value="0" min="0" max="359" required></label>
               <label>Polar speed scale<input name="speedScale" type="number" value="1" min="0.1" max="5" step="0.1" required></label>
@@ -110,10 +111,11 @@
               <label>Traveling persistent angle (°)<input name="persistentShiftAngle" type="number" value="12" min="-30" max="30" required></label>
               <label>Persistent entry start (s)<input name="shiftStartTime" type="number" value="20" min="0" max="600" required></label>
             </div>
+            <p>Finish Upwind uses a fixed 1,000 m course, a 100 m finish line and the 5 m dinghy. Course selection applies when you reset the leg.</p>
             <button type="submit" class="apply-button">Apply settings &amp; reset</button>
           </form>
           <p>Uniform persistent shifts use seeded start, direction, magnitude and duration. Traveling persistent shifts use the angle, entry start and width above. Traveling oscillations use seeded targets and holds with the selected transition width.</p>
-          <p>Traveling wind is a simplified training model: horizontal fronts move down the course at the pattern speed. This is separate from boat speed and actual wind speed. Dashed fronts show transition centers; streak angles show local wind direction. Laylines and the gate follow wind at the mark.</p>
+          <p>Traveling wind is a simplified training model: horizontal fronts move down the course at the pattern speed. Dashed fronts show transition centers; streak angles show local wind direction. Rounding gates follow wind at the mark. Finish Upwind keeps its line fixed; only its finish-area laylines turn with the wind.</p>
           <button id="traveling-demo" class="apply-button" type="button">Load 300 m traveling-shift demo</button>
         </details>
         <footer class="page-footer"><span>UPWIND / Build your tactical instinct.</span><span id="scenario-label">Scenario 314159 · Fixed-step sailing model</span></footer>

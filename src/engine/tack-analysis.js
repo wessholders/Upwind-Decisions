@@ -3,7 +3,8 @@ import { applyAction, advance, sailingHeading, settledHeading, sailingSpeedKnots
 import { replay } from './race.js';
 import { direction, signedAngle, normalize } from './geometry.js';
 import { windSampleAtPosition } from './wind.js';
-import { gateEnd } from './finish.js';
+import { courseGeometry, prevailingFinishWind, finishLineBias } from './course.js';
+import { courseRules, isUpwindFinish } from './course-config.js';
 import { performanceTarget } from './performance.js';
 
 export const TACK_COMPARISON_DELAY = 10;
@@ -20,7 +21,7 @@ export function stateBeforeCommand(scenario, route, commandIndex) {
 
 function distanceToGate(boat, scenario) {
   if (boat.finished) return 0;
-  const a = { x: 0, y: scenario.config.courseLength }, b = gateEnd(scenario, boat.time);
+  const { start: a, end: b } = courseGeometry(scenario, boat.time);
   const dx = b.x - a.x, dy = b.y - a.y;
   const u = Math.max(0, Math.min(1, ((boat.position.x - a.x) * dx + (boat.position.y - a.y) * dy) / (dx * dx + dy * dy)));
   return Math.hypot(boat.position.x - a.x - u * dx, boat.position.y - a.y - u * dy);
@@ -67,7 +68,11 @@ export function describeTack(scenario, route, commandIndex, number, decision, co
   const now = traceTackOption(scenario, before, true, duration);
   const hold = traceTackOption(scenario, before, false, duration);
   const difference = comparison.continuedTime === null ? null : comparison.continuedTime - route.finish.time;
+  const rules = courseRules(scenario.config);
+  const finishWind = isUpwindFinish(scenario.config) ? prevailingFinishWind(scenario, before.time) : null;
   return { ...comparison, number, time: before.time, chosenTime: route.finish.time, boat: before,
+    requiredFinishTack: rules.requiredTack, roundingSide: rules.roundingSide,
+    ...(finishWind ? { finishAreaWind: finishWind, finishBias: finishLineBias(courseGeometry(scenario), finishWind.direction) } : {}),
     fromTack: before.tack, toTack: tacked.tack, wind: { ...wind, compassDirection: normalize(wind.direction + scenario.config.baseline) },
     oldHeading: normalize(oldHeading + scenario.config.baseline), newHeading: normalize(newHeading + scenario.config.baseline),
     oldUpCourseKnots: speed * direction(oldHeading).y,

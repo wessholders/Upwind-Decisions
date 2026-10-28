@@ -49,11 +49,13 @@ The optional [wind inspection lab](wind-sandbox.html) remains available for drag
 
 ## Sailing
 
+Choose **Round to Port** (default), **Round to Starboard**, or **Finish Upwind** in Advanced settings and apply/reset. The rounding courses share the existing mark and gate, with opposite required sides. Finish Upwind uses a fixed 100 m finish line centered 1,000 m upwind, accepts either tack and displays four smoothed 200 m finish-pin laylines. Its pins stay fixed through wind shifts, with no live favored-pin hint. See [course modes and validation](docs/COURSE_MODES.md).
+
 - A purple **live computer** starts alongside you, sailing through the same wind with the same boat model, tack costs and finish rules. It makes decisions every 2 s from current wind observations. Its one-minute prediction freezes the current map; it has no future wind schedule or hindsight optimizer.
 - Start on starboard; the boat automatically follows the changing wind close-hauled.
 - Use **Tack** (keyboard T) for a moving roll tack: the heading turns smoothly over 4.5 s, speed dips to about 80% in steady wind and recovers to the current wind target by 8 s. Repeated tacks are locked through recovery. The player and both computer boats share this maneuver. Space starts/pauses. See [tack behavior and tuning](docs/TACKS.md).
 - **Bear away to mark** aims for the closest safe crossing beside the windward mark, leaving it to port on the starboard finish approach. It also accepts a small change such as 2°. The target is the mark end of the gate, with hull/buoy clearance—not the gate midpoint. Select it early to arm the approach; it holds close-hauled until a safe, legal course is available. It never tacks automatically. **Return close-hauled** cancels it, as does a tack. The status explains lockouts and distinguishes armed from active steering. See [mark approach geometry](docs/MARK_APPROACH.md).
-- Cross the finite dark gate right to left on starboard. It extends upwind from the mark and rotates with the wind. Laylines are visual references, never boundaries.
+- In Round to Port, cross the finite dark gate right to left on starboard. Round to Starboard mirrors that crossing left to right on port. These gates extend upwind from the mark and rotate with its wind. Finish Upwind instead requires a downwind-to-upwind crossing between its stationary pins. Laylines are visual references, never boundaries.
 - New wind creates a seed; retry preserves the exact scenario. Advanced settings apply when you reset the leg.
 - The gold hindsight route and numerical decision comparisons appear after finishing. The search includes your completed route and any already-finished computer route as incumbents, so beam pruning cannot discard a faster known valid result.
 - Open **Live computer decisions** to read its choices. If you finish first, it keeps racing; use Pause/Resume computer to control playback while your result stays fixed.

@@ -12,10 +12,11 @@ import { drawWindCanvas } from './views/wind-canvas.js';
 import { RaceWindLayer } from './views/organic-wind.js';
 import { computerLogView } from './views/computer.js';
 import { bearControlView } from './views/bear-control.js';
+import { courseRules, courseSettings, isUpwindFinish } from './engine/course-config.js';
 
 const trainer = createTrainer();
 const { state } = trainer;
-const ids = ['startup-error', 'wind-mode', 'difficulty', 'wind-field', 'favored-side', 'wind-display', 'wind-vectors', 'wind-canvas', 'local-wind-speed', 'wind-pressure', 'organic-settings', 'wind-legend', 'traveling-demo', 'status-dot', 'status', 'full-course', 'follow-boat', 'course', 'reference-legend', 'heading-value', 'tack-label', 'true-wind', 'wind-shift', 'elapsed', 'distance-value', 'tack-count', 'speed-value', 'tack', 'tack-button-text', 'bear', 'bear-status', 'start', 'playback', 'instrument-hint', 'new-wind', 'retry', 'toggle-wind', 'results', 'error', 'wind-history', 'wind-chart', 'settings-form', 'scenario-label', 'computer-state', 'computer-reason', 'computer-log', 'inspection-banner', 'inspection-label', 'inspection-return', 'wind-time'];
+const ids = ['startup-error', 'course-mode', 'wind-mode', 'difficulty', 'wind-field', 'favored-side', 'wind-display', 'wind-vectors', 'wind-canvas', 'local-wind-speed', 'wind-pressure', 'organic-settings', 'wind-legend', 'traveling-demo', 'status-dot', 'status', 'full-course', 'follow-boat', 'course', 'reference-legend', 'heading-value', 'tack-label', 'true-wind', 'wind-shift', 'elapsed', 'distance-value', 'tack-count', 'speed-value', 'tack', 'tack-button-text', 'bear', 'bear-status', 'start', 'playback', 'instrument-hint', 'new-wind', 'retry', 'toggle-wind', 'results', 'error', 'wind-history', 'wind-chart', 'settings-form', 'scenario-label', 'computer-state', 'computer-reason', 'computer-log', 'inspection-banner', 'inspection-label', 'inspection-return', 'wind-time'];
 const ui = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
 let frame = 0;
 let previousTime = 0;
@@ -31,14 +32,17 @@ const displayedTime = () => state.inspection?.time ?? state.raceTime;
 const needsAnimation = () => !state.inspection && (state.phase === 'sailing' || (state.phase === 'ready' && state.scenario.organicWind) ||
   (state.phase === 'finished' && !state.computerPaused && computerActive()));
 
-function drawWaterWind(elapsed = 0) {
-  if (state.windDisplay === 'hidden') return;
+function courseMetrics() {
   const style = getComputedStyle(ui.course);
-  const metrics = {
+  return {
     width: ui.course.clientWidth, height: ui.course.clientHeight,
     pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
     padding: { left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight), top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom) },
   };
+}
+function drawWaterWind(elapsed = 0) {
+  if (state.windDisplay === 'hidden') return;
+  const metrics = courseMetrics();
   if (state.scenario.organicWind) organicWind.draw(ui['wind-canvas'], state.scenario, displayedTime(),
     ui.course.getAttribute('viewBox'), state.windDisplay, metrics, elapsed, ui['wind-vectors'].checked, state.inspection?.number ?? null);
   else drawWindCanvas(ui['wind-canvas'], state.scenario, displayedTime(), ui.course.getAttribute('viewBox'), state.windDisplay, metrics);
@@ -59,6 +63,10 @@ function render(includeWind = true) {
   ui.difficulty.value = state.draft.difficulty;
   ui['wind-field'].value = state.draft.windField;
   ui['favored-side'].value = state.draft.favoredSide;
+  ui['course-mode'].value = state.draft.courseMode;
+  for (const name of ['courseLength', 'boatLength', 'gateBoatLengths']) {
+    ui['settings-form'].elements[name].disabled = isUpwindFinish(state.draft);
+  }
   ui['wind-mode'].disabled = active;
   ui.difficulty.disabled = active;
   ui['wind-field'].disabled = active;
@@ -88,9 +96,12 @@ function render(includeWind = true) {
   ui['bear-status'].textContent = bear.description; ui['bear-status'].dataset.state = bear.state;
   ui.start.disabled = Boolean(state.inspection) || (state.phase === 'finished' && !computerActive());
   ui.start.textContent = state.phase === 'finished' ? (state.computerPaused ? '▶ Resume computer' : computerActive() ? 'Ⅱ Pause computer' : 'Leg complete') : state.phase === 'sailing' ? 'Ⅱ Pause' : state.phase === 'paused' ? '▶ Resume' : '▶ Start sailing';
+  const rules = courseRules(scenario.config), upwind = isUpwindFinish(scenario.config);
   ui['instrument-hint'].textContent = state.inspection ? `Viewing the reference just before tack ${state.inspection.number}. The field and instruments show that decision's time and location.` : state.phase === 'ready'
-    ? 'Start on starboard. Tack when you choose. Cross the dark gate right to left on starboard to finish.'
-    : boat.mode === 'gate' ? 'Aim close to the windward mark, leaving it to port on the finish approach. Steering respects hull clearance and the no-go angle; a tack cancels mark aiming.'
+    ? upwind ? 'Cross the fixed finish line between the pins from downwind to upwind. Either tack may finish.'
+      : `Start on starboard. Tack when you choose. Cross the dark gate ${rules.sign > 0 ? 'right to left' : 'left to right'} on ${rules.requiredTack} to finish.`
+    : boat.mode === 'gate' ? upwind ? 'Aim for a legal crossing between the fixed finish pins. A tack cancels finish aiming.'
+      : `Aim close to the windward mark, leaving it to ${rules.roundingSide} on the finish approach. Steering respects hull clearance and the no-go angle; a tack cancels mark aiming.`
       : 'The boat follows the wind automatically. You choose when to tack.';
   ui['reference-legend'].hidden = !state.benchmark?.route;
   ui['wind-history'].hidden = !state.showWind;
@@ -106,7 +117,7 @@ function render(includeWind = true) {
   if (computer.decisions.length !== lastComputerLogLength) {
     ui['computer-log'].innerHTML = computerLogView(computer); lastComputerLogLength = computer.decisions.length;
   }
-  const course = courseView({ ...state, boat: viewedBoat, displayTime: time });
+  const course = courseView({ ...state, boat: viewedBoat, displayTime: time, viewport: courseMetrics() });
   ui.course.setAttribute('viewBox', course.viewBox);
   ui.course.setAttribute('aria-label', course.label);
   ui.course.innerHTML = course.markup;
@@ -178,7 +189,7 @@ function reset(config) {
     worker?.terminate(); worker = null;
     lastResults = null;
     lastComputerLogLength = -1;
-    for (const input of ui['settings-form'].querySelectorAll('input[name]')) input.value = state.draft[input.name];
+    for (const input of ui['settings-form'].querySelectorAll('input[name], select[name]')) input.value = state.draft[input.name];
   } catch (error) { state.error = error.message; }
   update();
 }
@@ -226,6 +237,11 @@ ui['traveling-demo'].addEventListener('click', () => {
 ui['settings-form'].addEventListener('input', event => {
   if (event.target.matches('input[name]')) state.draft = { ...state.draft, [event.target.name]: event.target.valueAsNumber };
 });
+ui['course-mode'].addEventListener('change', () => {
+  state.draft = courseSettings({ ...state.draft, courseMode: ui['course-mode'].value });
+  for (const name of ['courseLength', 'boatLength', 'gateBoatLengths']) ui['settings-form'].elements[name].value = state.draft[name];
+  update();
+});
 ui['settings-form'].addEventListener('submit', event => { event.preventDefault(); reset(state.draft); });
 window.addEventListener('keydown', event => {
   if (event.target.closest('input, select, button, summary, textarea, [contenteditable]') || event.repeat) return;
@@ -235,4 +251,9 @@ window.addEventListener('keydown', event => {
 window.addEventListener('pagehide', () => { worker?.terminate(); cancelAnimationFrame(frame); });
 ui['startup-error'].hidden = true;
 update();
-new ResizeObserver(() => drawWaterWind()).observe(ui.course);
+new ResizeObserver(() => {
+  // The SVG transform resizes itself; the new guides' world-space clip must
+  // also follow the visible viewport, including when the race is paused.
+  if (isUpwindFinish(state.scenario.config)) render();
+  else drawWaterWind();
+}).observe(ui.course);

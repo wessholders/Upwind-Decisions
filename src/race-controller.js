@@ -2,10 +2,11 @@ import { DEFAULT_TRAINER_CONFIG, STEP, validateConfig } from './engine/config.js
 import { advance, applyAction, initialBoat } from './engine/physics.js';
 import { createScenario } from './engine/wind.js';
 import { createLiveComputer, advanceLiveComputer } from './engine/live-computer.js';
+import { courseSettings } from './engine/course-config.js';
 
 // Rendering-free player lifecycle; the browser only supplies elapsed wall time.
 export function createTrainer(config = DEFAULT_TRAINER_CONFIG) {
-  config = { ...DEFAULT_TRAINER_CONFIG, ...config };
+  config = courseSettings({ ...DEFAULT_TRAINER_CONFIG, ...config });
   const state = {
     scenario: createScenario(config), draft: { ...config }, phase: 'ready',
     boat: initialBoat(), track: [initialBoat()], commands: [],
@@ -15,7 +16,7 @@ export function createTrainer(config = DEFAULT_TRAINER_CONFIG) {
   };
 
   function reset(nextConfig) {
-    nextConfig = { ...DEFAULT_TRAINER_CONFIG, ...nextConfig };
+    nextConfig = courseSettings({ ...DEFAULT_TRAINER_CONFIG, ...nextConfig });
     validateConfig(nextConfig);
     Object.assign(state, {
       scenario: createScenario(nextConfig), draft: { ...nextConfig }, phase: 'ready',

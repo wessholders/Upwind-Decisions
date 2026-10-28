@@ -1,6 +1,7 @@
 import { DEFAULT_CONFIG, validateConfig, KNOT_TO_MPS } from './config.js';
 import { fieldForScenario, attachWindField } from '../wind/field.js';
 import { windVector } from '../wind/config.js';
+import { courseSettings, isUpwindFinish, fixedUpwindFinish } from './course-config.js';
 // Mulberry32: all randomness is consumed when creating the scenario, never by a frame.
 export function randomFromSeed(seed) {
     let value = seed >>> 0;
@@ -12,7 +13,7 @@ export function randomFromSeed(seed) {
     };
 }
 export function createScenario(config) {
-    config = { ...DEFAULT_CONFIG, ...config };
+    config = courseSettings({ ...DEFAULT_CONFIG, ...config });
     validateConfig(config);
     const random = randomFromSeed(config.seed);
     const wind = [{ time: 0, direction: 0 }];
@@ -42,6 +43,7 @@ export function createScenario(config) {
         }
     }
     const scenario = { config: { ...config }, wind };
+    if (isUpwindFinish(config)) scenario.course = fixedUpwindFinish(wind[0].direction);
     return config.windField === 'organic' ? attachWindField(scenario, {
         width: Math.max(720, config.courseLength * 1.4),
         height: config.courseLength + config.boatLength * config.gateBoatLengths + 100,

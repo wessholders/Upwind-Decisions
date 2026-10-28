@@ -2,6 +2,8 @@
 
 Both boats use the player's authoritative wind field, pressure response, allowed headings, tack penalty, close-mark approach steering and clearance-safe finish crossing. Their information and decision methods differ. See [mark approach geometry](MARK_APPROACH.md).
 
+Both also receive the selected [course mode](COURSE_MODES.md): port rounding retains its starboard final tack, starboard rounding requires port, and Finish Upwind accepts either tack across a fixed finite segment. Current observations carry only the current course snapshot, not future wind. Hindsight tack records retain finish-area wind and projection-based bias for future analysis; live training does not display it. References below to a starboard rounding finish describe the default Round to Port mode.
+
 Default boat performance comes from the shared [main + jib polar](POLAR.md) and gradual actual-speed response. The observation carries public profile settings and current actual speed. Frozen-map forecasts use those same target/response functions; hindsight advances the authoritative physics. Search state grouping includes actual speed, and horizons and VMG/progress estimates use polar performance. The earlier constant-speed/pressure goldens explicitly select compatibility mode in tests.
 
 ## Live computer (purple)
