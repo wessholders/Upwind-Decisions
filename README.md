@@ -1,6 +1,6 @@
 # Upwind Decisions
 
-A vanilla HTML, CSS, and JavaScript sailing trainer with a deterministic, rendering-independent engine. Read moving organic puffs and light-air pockets, decide when to tack, and compare your upwind route with a hindsight reference using the same local wind and boat-speed response. No frameworks, package dependencies, transpilation, or build step.
+A vanilla HTML, CSS, and JavaScript sailing trainer with a deterministic, rendering-independent engine. Read moving organic puffs and light-air pockets, decide when to tack, and compare your upwind route with a hindsight reference using the same local wind and boat-speed response. No frameworks, runtime package dependencies or transpilation. The deployment build copies the existing static assets without changing them.
 
 ## Run
 
@@ -19,7 +19,23 @@ node scripts/check.js
 
 Optional npm aliases: `npm run dev`, `npm test`, and `npm run check`. On Windows PowerShell with script execution disabled, use `npm.cmd` in place of `npm`.
 
-To deploy, upload **`index.html`, `wind-sandbox.html` and the `src/` directory** together to a static host. Paths are relative, so deployment in a subdirectory is supported. There is no `dist/` build output. The host must serve `.js` with a JavaScript MIME type for native modules and the optimizer worker.
+## Cloudflare Workers deployment
+
+Install deployment tooling and build the static site:
+
+```sh
+npm ci
+npm run build
+npx wrangler deploy
+```
+
+`npm run build` cleans and recreates `dist/` with only `index.html`, `wind-sandbox.html` and the complete `src/` asset tree. Native modules, styles and the optimizer worker retain their relative paths and original contents. Tests, development scripts, dependencies, Git files and project documentation are excluded. `dist/` is generated and not committed. Wrangler is a pinned development dependency; it is not used by the application at runtime or by the Node development server.
+
+`wrangler.jsonc` targets the existing **upwind-decisions** Worker with `assets.directory: "./dist"`. It also runs `npm run build` before deployment, so direct `npx wrangler deploy` cannot upload stale build output. No server-side Worker entry point or Vite/TypeScript build is needed. Unknown URLs return 404 rather than the application HTML.
+
+For the existing Cloudflare Workers Builds integration, use repository root `/`, production branch **main**, build command **npm run build**, and deploy command **npx wrangler deploy**. Use Node 22.12+ (Node 24 is verified), and install development dependencies so the locked Wrangler version is available. Cloudflare Workers Builds supplies deployment authentication; another CI provider needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` environment variables. CI deployment does not require an interactive login. `npm run deploy` is an equivalent convenience command.
+
+To validate configuration and asset packaging without publishing, run `npx wrangler deploy --dry-run`. To serve the built assets in the Workers runtime, run `npx wrangler dev`. Development and tests remain `npm run dev` and `npm test` and do not require the deployment build. See [Cloudflare static assets](https://developers.cloudflare.com/workers/static-assets/binding/) for hosting configuration.
 
 ## Wind on the sailing course
 
@@ -98,7 +114,7 @@ The live computer is a separate heuristic policy. Its input is a plain current-t
 
 Wind knots are generated at scenario creation and queried by simulation time. Oscillations sample bounded independent targets, with randomized holds and smoothstep transitions, permitting several shifts on the same side of the median. Difficulty scales hold/transition times (easy 1.6×, medium 1×, hard 0.45×). Persistent scenarios randomize start, sign, magnitude and duration from the seed, then hold the final wind. Generated oscillations cover five hours; the final direction is held after that horizon.
 
-The interface runs entirely in the browser. Fonts and assets use local resources; there are no CDN imports or remote font requests. The optional local server only serves static files. No account, database, analytics, deployment, or external data service is configured.
+The interface runs entirely in the browser. Fonts and assets use local resources; there are no CDN imports or remote font requests. The optional local server only serves static files. Cloudflare Workers hosts the built static assets; no application account, database, analytics or external data service is required.
 
 ## Handoff status
 

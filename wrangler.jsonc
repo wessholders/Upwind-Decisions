@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "upwind-decisions",
+  "compatibility_date": "2026-10-28",
+  "build": {
+    "command": "npm run build"
+  },
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "none"
+  }
+}

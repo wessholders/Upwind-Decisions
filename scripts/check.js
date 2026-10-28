@@ -24,4 +24,4 @@ for (const page of ['index.html', 'wind-sandbox.html']) {
   const html = await readFile(resolve(root, page), 'utf8');
   for (const [, asset] of html.matchAll(/(?:src|href)="(\.\/[^"\s]+\.(?:js|css))"/g)) await access(resolve(root, asset));
 }
-console.log(`Checked ${files.filter(file => extname(file) === '.js').length} JavaScript files, imports, and HTML entry assets. No build needed.`);
+console.log(`Checked ${files.filter(file => extname(file) === '.js').length} JavaScript files, imports, and HTML entry assets. No transpilation needed.`);
