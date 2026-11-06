@@ -8,9 +8,13 @@
     <meta name="description" content="Practice upwind sailing decisions in repeatable wind shifts, then compare your route with a hindsight benchmark." />
     <title>Upwind — Sailing Decision Trainer</title>
     <link rel="stylesheet" href="./src/styles.css">
+    <link rel="stylesheet" href="./src/game.css">
     <script type="module" src="./src/main.js"></script>
   </head>
-  <body>
+  <body data-screen="lobby">
+    <noscript><p class="error">Enable JavaScript to run the sailing simulation.</p></noscript>
+    <p id="startup-error" class="error" role="alert">The trainer is loading. If this message remains, serve this folder over HTTP (run <code>node scripts/serve.js</code>) and use a current browser.</p>
+    <main id="home-screen"></main>
     <div class="app-shell">
       <header class="site-header">
         <a href="./" class="brand" aria-label="Upwind home">
@@ -18,11 +22,9 @@
           <span>UPWIND<span class="brand-sub">DECISION TRAINER</span></span>
         </a>
         <span class="header-note">READ THE PRESSURE. SAIL THE SHIFT.</span>
-        <span class="version">TRAINING / 01</span>
+        <nav class="session-navigation" aria-label="Race navigation"><button id="change-course" type="button">Change Course</button><button id="main-menu" type="button">Main Menu</button></nav>
       </header>
-      <main>
-        <noscript><p class="error">Enable JavaScript to run the sailing simulation.</p></noscript>
-        <p id="startup-error" class="error" role="alert">The trainer is loading. If this message remains, serve this folder over HTTP (run <code>node scripts/serve.js</code>) and use a current browser.</p>
+      <main id="session-screen" tabindex="-1" hidden>
         <div class="intro-row">
           <div><div class="eyebrow">THE UPWIND LEG</div><h1>Every tack is a decision.</h1><p>Read approaching puffs, find the pressure, and sail the shifts.</p></div>
           <div class="scenario-selects">

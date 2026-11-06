@@ -5,7 +5,7 @@ export const DEFAULT_WIND = Object.freeze({
   frequency: 1.5, sizeBL: 35, maxShift: 15, windKnots: 10, contrast: 0.3,
   width: 720, height: 1000, boatLength: 5, translation: 1,
   puffProbability: 0.72, initialFeatures: 7,
-  tempo: 1, transitionSeconds: 40,
+  tempo: 1, transitionSeconds: 40, shiftDirection: 0,
 });
 export const clamp = (v, low, high) => Math.max(low, Math.min(high, v));
 export const smooth = x => { const u = clamp(x, 0, 1); return u * u * (3 - 2 * u); };
@@ -26,6 +26,7 @@ export function windConfig(input = {}) {
   }
   if (!Number.isInteger(config.seed) || !Number.isInteger(config.initialFeatures)) throw new Error('Seed and initial count must be integers.');
   if (!['steady', 'oscillating', 'persistent'].includes(config.regime)) throw new Error('Invalid regime.');
+  if (![-1, 0, 1].includes(config.shiftDirection)) throw new Error('Invalid shift direction.');
   if (!['balanced', 'left', 'right'].includes(config.favoredSide)) throw new Error('Invalid favored side.');
   return Object.freeze(config);
 }

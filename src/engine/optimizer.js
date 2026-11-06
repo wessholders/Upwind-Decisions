@@ -8,6 +8,7 @@ import { referenceSpeedKnots } from './performance.js';
 import { courseGeometry, nearestFinishPoint } from './course.js';
 import { courseRules, isUpwindFinish } from './course-config.js';
 import { describeTack, stateBeforeCommand, TACK_COMPARISON_DELAY, MAX_FINISH_COMPARISONS } from './tack-analysis.js';
+import { currentVelocity } from './current.js';
 // Ranking only: a frozen-current-wind travel estimate. It is NOT an admissible
 // bound for changing wind, and no optimality claim is made from this heuristic.
 function rank(boat, scenario) {
@@ -20,7 +21,13 @@ function rank(boat, scenario) {
     const across = Math.abs(dot(remaining, { x: v.y, y: -v.x }));
     const angle = radians(scenario.config.minAngle);
     const speed = Math.max(1e-6, targetSpeedKnots(boat, scenario)) * KNOT_TO_MPS;
-    const sailing = Math.max(Math.hypot(remaining.x, remaining.y), up / Math.cos(angle), across / Math.sin(angle)) / speed;
+    const flow = currentVelocity(scenario.config);
+    const acrossSign = Math.sign(dot(remaining, { x: v.y, y: -v.x }));
+    const sailing = flow.x || flow.y ? Math.max(
+        Math.hypot(remaining.x, remaining.y) / (speed + Math.hypot(flow.x, flow.y)),
+        up / Math.max(0.05, speed * Math.cos(angle) + dot(flow, v)),
+        across / Math.max(0.05, speed * Math.sin(angle) + acrossSign * dot(flow, { x: v.y, y: -v.x })))
+      : Math.max(Math.hypot(remaining.x, remaining.y), up / Math.cos(angle), across / Math.sin(angle)) / speed;
     const required = courseRules(scenario.config).requiredTack;
     return sailing + (required && boat.tack !== required ? tackSpeedCost(scenario.config) : 0);
 }

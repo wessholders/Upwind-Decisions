@@ -1,8 +1,9 @@
 import { courseRules, isUpwindFinish } from './course-config.js';
 export { fixedUpwindFinish } from './course-config.js';
 import { KNOT_TO_MPS } from './config.js';
-import { direction, dot, cross, subtract, interpolate, headingTo, validHeading, markContactClearance, distanceToSegment, layline } from './geometry.js';
+import { direction, dot, cross, subtract, interpolate, headingTo, validHeading, markContactClearance, distanceToSegment } from './geometry.js';
 import { windAtPosition, windSampleAtPosition } from './wind.js';
+import { predictedLayline } from './current.js';
 
 export const FINISH_GUIDES = { length: 200, opacity: 0.28, strokeWidth: 1.5, fadeStart: 0.7,
   smoothingSeconds: 6, temporalSamples: 7, sampleOffset: 25 };
@@ -79,9 +80,9 @@ export function prevailingFinishWind(scenario, time) {
   }
   return { direction: Math.atan2(-vx, -vy) * 180 / Math.PI, speedKnots: Math.hypot(vx, vy) / weight / KNOT_TO_MPS };
 }
-export function finishLaylines(scenario, time) {
+export function finishLaylines(scenario, time, mode = 'wind-only') {
   const course = courseGeometry(scenario, time), wind = prevailingFinishWind(scenario, time);
   return { wind, lines: [course.start, course.end].flatMap((pin, index) => ['starboard', 'port'].map(tack => ({
-    pin: index, tack, start: pin, end: layline(pin, wind.direction, tack, scenario.config.minAngle, FINISH_GUIDES.length),
+    pin: index, tack, start: pin, end: predictedLayline(pin, wind, tack, scenario.config, FINISH_GUIDES.length, mode),
   }))) };
 }

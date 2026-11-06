@@ -2,6 +2,32 @@
 
 A vanilla HTML, CSS, and JavaScript sailing trainer with a deterministic, rendering-independent engine. Read moving organic puffs and light-air pockets, decide when to tack, and compare your upwind route with a hindsight reference using the same local wind and boat-speed response. No frameworks, runtime package dependencies or transpilation. The deployment build copies the existing static assets without changing them.
 
+## Game flow
+
+The app opens in an animated-water lobby. **Start Training** opens four setup steps: Course, Wind & Current, Opponent, and Review & Launch. Choose any of the three existing courses and Solo Training or Race NPC. Basic wind settings include five behavior presets, base wind, seeded randomization and a reusable seed. Existing detailed controls remain under course tuning and Advanced Wind Settings. Optional uniform current is configured alongside wind.
+
+**My Boat** saves a preset hull color on this device. **Preferences** stores wind display, history and camera choices locally, with a keyboard reference. No account or network service is involved. The lobby reuses the actual organic water renderer with a separate scenario and clock; it stops when hidden and stays static with reduced motion.
+
+While sailing, hold **Left / Right Arrow** to steer physically left / right at 15 degrees per real second, independently of 1×, 4×, 8× or 16× playback. **Space** calls the existing moving tack. **P** or **Escape** toggles the pause menu. Touch steer buttons, Tack, Bear Away to Mark/Finish, and Return to Close Haul remain available. Steering follows local true wind and stops at the configured close-hauled limit (45° by default) or the profile's downwind limit. Manual input cancels mark aiming; tack and Return to Close Haul return to the minimum angle. Inputs during the physical tack turn are ignored.
+
+**Go to Course** opens the race in a ready state. Both boats and the clock wait until you select **Start Race**. Restart and Race Again also wait for this explicit start, reusing the exact configuration and seed. Space and the arrow keys do not scroll the course page; editable fields retain their native keys, and focused buttons retain Space activation. Pause offers Resume, Restart Scenario, Return to Scenario Setup and Return to Lobby. Modify Scenario retains the setup draft. Finishing reveals the existing hindsight results and interactive tack inspection; Display & navigation aids contains detailed wind controls, history and NPC decisions.
+
+The sticky race header offers **Main Menu** and **Change Course**. Change Course returns directly to layout selection and preserves the other setup values; Main Menu returns to the lobby without reloading the app. Hindsight routes, markers, comparison metrics and tack explanations stay hidden by default on each race. After finishing, **Show Hindsight Reference** reveals the existing analysis; the same button hides it again. Hidden reference routes do not change the camera bounds.
+
+**New Scenario**, beside Race Again and in the pause menu, generates a fresh seed using the same course, wind behavior and opponent choices. Seeded current is regenerated when enabled with global randomization; manual current values stay fixed. The course returns to ready and waits for **Start Race**. **Race Again** repeats the newly selected seed and its exact conditions.
+
+The same seed **and full configuration** reproduce wind conditions; replayed command logs reproduce sailing physics. Randomize Scenario adds bounded, seeded variation to existing parameters, while disabling it uses the entered parameters directly. Organic persistent shifts remain inside features, with unchanged zero-degree ambient wind. The selected left/right preset fixes the trend sign without changing the water palette or feature model. Steering is recorded as explicit target-angle commands; live human timing is not encoded by a wind seed alone.
+
+See [the Phase 1 audit, architecture and validation](docs/PHASE_1.md). Run optional real-browser regression checks with `node scripts/browser-check.js` after starting the local server and an isolated Edge/Chromium instance with `--remote-debugging-port=9225`. Screenshots are written under ignored `artifacts.local/`.
+
+## Uniform current
+
+Under **Wind & Current**, enable water current. With global **Randomize Scenario** on, the seed selects a continuous speed from zero to **Maximum Current Speed** (default 1.5 kn, configurable 0–3 kn), and a direction anywhere on the compass. With randomization off, enter exact manual speed (0–3 kn) and direction (0–359°). Direction means **flows toward**, unlike wind's from-bearing. Manual values survive toggling randomization/current and navigating setup. The generated current is shown in review and stored at full precision in session metadata; it stays constant throughout the race. Restart/Race Again preserve it; New seed reshuffles it only when current and randomization are enabled.
+
+Ground velocity adds current to the existing through-water boat velocity for player, NPC, replay and hindsight. Polar curves, acceleration, true-wind steering, tack transitions and penalties are unchanged. Marks and fixed finish pins stay fixed. Mark/finish aiming accounts for drift, while manual steering retains its local-wind angle. Current never advects puffs or pockets.
+
+**Display & navigation aids → Layline calculation** offers **Wind Only** (default, original geometry/style) and **Wind + Current** (ground-track predictions using the existing polar). This is a persisted display preference; switching it never resets the race or changes physics. The HUD retains boat speed as STW and adds a compact current-toward arrow plus SOG/COG when enabled. Path distance and progress are over ground. See [current audit, equations, tests and limitations](docs/CURRENT.md).
+
 ## Run
 
 Serve this folder with any static HTTP server. The included development server and tests use Node 22.12+ (verified with Node 24); **no `npm install` is needed**.
@@ -53,7 +79,7 @@ Choose **Round to Port** (default), **Round to Starboard**, or **Finish Upwind**
 
 - A purple **live computer** starts alongside you, sailing through the same wind with the same boat model, tack costs and finish rules. It makes decisions every 2 s from current wind observations. Its one-minute prediction freezes the current map; it has no future wind schedule or hindsight optimizer.
 - Start on starboard; the boat automatically follows the changing wind close-hauled.
-- Use **Tack** (keyboard T) for a moving roll tack: the heading turns smoothly over 4.5 s, speed dips to about 80% in steady wind and recovers to the current wind target by 8 s. Repeated tacks are locked through recovery. The player and both computer boats share this maneuver. Space starts/pauses. See [tack behavior and tuning](docs/TACKS.md).
+- Use **Tack** (keyboard Space) for a moving roll tack: the heading turns smoothly over 4.5 s, speed dips to about 80% in steady wind and recovers to the current wind target by 8 s. Repeated tacks are locked through recovery. The player and both computer boats share this maneuver. P or Escape opens the pause menu. See [tack behavior and tuning](docs/TACKS.md).
 - **Bear away to mark** aims for the closest safe crossing beside the windward mark, leaving it to port on the starboard finish approach. It also accepts a small change such as 2°. The target is the mark end of the gate, with hull/buoy clearance—not the gate midpoint. Select it early to arm the approach; it holds close-hauled until a safe, legal course is available. It never tacks automatically. **Return close-hauled** cancels it, as does a tack. The status explains lockouts and distinguishes armed from active steering. See [mark approach geometry](docs/MARK_APPROACH.md).
 - In Round to Port, cross the finite dark gate right to left on starboard. Round to Starboard mirrors that crossing left to right on port. These gates extend upwind from the mark and rotate with its wind. Finish Upwind instead requires a downwind-to-upwind crossing between its stationary pins. Laylines are visual references, never boundaries.
 - New wind creates a seed; retry preserves the exact scenario. Advanced settings apply when you reset the leg.
@@ -73,7 +99,7 @@ This is a simplified training model. Horizontal fronts move along the down-cours
 
 See [the spatial model](docs/SPATIAL_WIND.md) for equations, numerical limits and validation.
 
-Trainer defaults: organic wind; 1000 m course; main + jib polar at scale 1; 4.6 kn target at 45° TWA in 10 kn wind; 3 s acceleration / 2 s deceleration time constants; minimum 45° sailing angle outside tacks; 4.5 s moving tack with the existing 80% speed envelope and recovery by 8 s; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° individual regime/feature shift bound. Regime and feature deviations can combine inside patches; ambient wind outside patches stays at 0° relative to the course. The polar is provisional, not measured telemetry. No current, waves, spinnaker deployment or apparent-wind model is added.
+Trainer defaults: organic wind; 1000 m course; main + jib polar at scale 1; 4.6 kn target at 45° TWA in 10 kn wind; 3 s acceleration / 2 s deceleration time constants; minimum 45° sailing angle outside tacks; 4.5 s moving tack with the existing 80% speed envelope and recovery by 8 s; 5 m boatlength; 20-boatlength (100 m) finish gate; ±15° individual regime/feature shift bound; current off. Regime and feature deviations can combine inside patches; ambient wind outside patches stays at 0° relative to the course. The polar is provisional, not measured telemetry. Optional uniform current adds ground drift; no waves, spinnaker deployment or apparent-wind coupling is added.
 
 ## Architecture
 
@@ -88,6 +114,8 @@ src/engine/
   wind.js        seeded scenario generation and time-indexed interpolation
   finish.js      finite rotating gate and crossing interpolation
   physics.js     single authoritative boat model and commands
+  current.js     compass current vectors, ground telemetry and optional laylines
+  navigation.js  existing approach geometry with current drift compensation
   tack.js        shared smooth turn, speed envelope and recovery
   race.js        deterministic command replay
   optimizer.js   bounded beam search and tack counterfactuals

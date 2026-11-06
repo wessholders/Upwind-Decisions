@@ -25,7 +25,9 @@ export function createScenario(config) {
     }
     else if (config.windMode === 'persistent') {
         const start = 15 + random() * 90;
-        const magnitude = config.maxShift * (0.6 + random() * 0.4) * (random() < 0.5 ? -1 : 1);
+        const amount = config.maxShift * (0.6 + random() * 0.4);
+        const randomSign = random() < 0.5 ? -1 : 1;
+        const magnitude = amount * (config.shiftDirection || randomSign);
         wind.push({ time: start, direction: 0 }, { time: start + config.shiftDuration * (0.7 + random() * 0.6), direction: magnitude });
     }
     else if (config.windMode === 'oscillating') {
@@ -53,6 +55,7 @@ export function createScenario(config) {
         windKnots: config.backgroundWindKnots, contrast: config.windContrast / 100,
         tempo: { easy: 1.6, medium: 1, hard: 0.45 }[config.difficulty],
         transitionSeconds: config.shiftDuration,
+        shiftDirection: config.shiftDirection ?? 0,
     }) : scenario;
 }
 

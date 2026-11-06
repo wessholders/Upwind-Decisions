@@ -1,7 +1,8 @@
 import { gateEnd, windAtMark } from '../engine/finish.js';
-import { direction, layline } from '../engine/geometry.js';
+import { direction } from '../engine/geometry.js';
 import { sailingHeading, gateAimGeometry } from '../engine/physics.js';
-import { windAtPosition } from '../engine/wind.js';
+import { windAtPosition, windSampleAtPosition } from '../engine/wind.js';
+import { predictedLayline } from '../engine/current.js';
 import { courseGeometry } from '../engine/course.js';
 import { isUpwindFinish, COURSE_LABEL } from '../engine/course-config.js';
 import { finishGuidesView, COURSE_THEME } from './finish-guides.js';
@@ -9,15 +10,19 @@ import { courseProjection } from './wind-canvas.js';
 
 const path = points => points.map((p, i) => `${i ? 'L' : 'M'}${p.position.x.toFixed(2)},${(-p.position.y).toFixed(2)}`).join(' ');
 
-export function courseView({ scenario, boat, track, benchmark, follow, computer = null, inspection = null, displayTime = boat.time, viewport = null }) {
+export function courseView({ scenario, boat, track, benchmark, follow, computer = null, inspection = null, displayTime = boat.time, viewport = null, boatColor = '#246caa', showReference = false, laylineMode = 'wind-only' }) {
+  // Hidden references must not affect camera bounds or expose tack markers.
+  if (!showReference && !inspection) benchmark = null;
+  if (!/^#[0-9a-f]{6}$/i.test(boatColor)) boatColor = '#246caa';
   const { config } = scenario;
   const geometry = courseGeometry(scenario, displayTime), upwind = isUpwindFinish(config);
   const mark = geometry.mark ?? geometry.center;
   const wind = windAtPosition(scenario, boat.position.x, boat.position.y, displayTime);
   const markWind = upwind ? 0 : windAtMark(scenario, displayTime);
   const gate = gateEnd(scenario, displayTime);
-  const starboard = upwind ? null : layline(mark, markWind, 'starboard', config.minAngle, config.boatLength * 100);
-  const port = upwind ? null : layline(mark, markWind, 'port', config.minAngle, config.boatLength * 100);
+  const markSample = upwind ? null : { ...windSampleAtPosition(scenario, mark.x, mark.y, displayTime), direction: markWind };
+  const starboard = upwind ? null : predictedLayline(mark, markSample, 'starboard', config, config.boatLength * 100, laylineMode);
+  const port = upwind ? null : predictedLayline(mark, markSample, 'port', config, config.boatLength * 100, laylineMode);
   const margin = config.courseLength * 0.08;
   let xmin = -config.courseLength * 0.58, xmax = -xmin;
   let ymin = -margin, ymax = config.courseLength + config.boatLength * config.gateBoatLengths + margin;
@@ -42,7 +47,7 @@ export function courseView({ scenario, boat, track, benchmark, follow, computer 
   const visibleBounds = viewport?.width > 0 && viewport?.height > 0
     ? courseProjection(viewBox, viewport.width, viewport.height, viewport.padding).visibleBounds
     : { minX: vx, maxX: vx + vw, minY: -vy - vh, maxY: -vy };
-  const guides = upwind ? finishGuidesView(scenario, displayTime, visibleBounds) : { definitions: '', markup: '' };
+  const guides = upwind ? finishGuidesView(scenario, displayTime, visibleBounds, laylineMode) : { definitions: '', markup: '' };
   const finishMarkup = upwind ? `${guides.markup}
     <path class="finish-line" d="M${geometry.start.x},${-geometry.start.y} L${geometry.end.x},${-geometry.end.y}" stroke="${COURSE_THEME.finish}" stroke-width="3" vector-effect="non-scaling-stroke"/>
     ${[geometry.start, geometry.end].map((pin, i) => `<circle class="finish-pin" data-pin="${i}" cx="${pin.x}" cy="${-pin.y}" r="${config.boatLength * 0.5}" fill="${COURSE_THEME.pin}" stroke="${COURSE_THEME.finish}" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('')}
@@ -59,7 +64,7 @@ export function courseView({ scenario, boat, track, benchmark, follow, computer 
   const windVector = direction(wind);
   const tackPoints = benchmark?.route?.commands.filter(c => c.action === 'tack').map(c => benchmark.route.points.find(p => p.time >= c.time)) ?? [];
   const reference = benchmark?.route
-    ? `<path d="${path(benchmark.route.points)}" fill="none" stroke="#b58a25" stroke-width="2.6" stroke-dasharray="7 6" vector-effect="non-scaling-stroke"/>` : '';
+    ? `<path class="hindsight-reference" d="${path(benchmark.route.points)}" fill="none" stroke="#b58a25" stroke-width="2.6" stroke-dasharray="7 6" vector-effect="non-scaling-stroke"/>` : '';
   const approach = boat.mode === 'gate' ? gateAimGeometry(boat, scenario, displayTime) : null;
   const approachGuide = approach?.legal ? `<path class="mark-approach-guide" d="M${boat.position.x},${-boat.position.y} L${approach.target.x},${-approach.target.y}" fill="none" stroke="#3e7a9f" opacity="0.5" stroke-width="1" stroke-dasharray="2 4" vector-effect="non-scaling-stroke"/>` : '';
   const tacks = tackPoints.map((p, i) => p ? `<g class="reference-tack" data-inspect-tack="${i + 1}" role="button" tabindex="0" aria-label="View wind at reference tack ${i + 1}">
@@ -83,8 +88,8 @@ export function courseView({ scenario, boat, track, benchmark, follow, computer 
       ${computerMarkup}${reference}${approachGuide}${tacks}
       <g transform="translate(${boat.position.x},${-boat.position.y}) rotate(${sailingHeading(boat, scenario, displayTime)})" class="${inspection ? 'reference-probe' : 'player-boat'}">
         <circle r="${symbol * 1.4}" fill="#fff" opacity="0.75"/>
-        <path d="M0,${-hull} Q${hull * 0.5},0 ${hull * 0.35},${hull} L${-hull * 0.35},${hull} Q${-hull * 0.5},0 0,${-hull}" fill="${inspection ? '#b58a25' : '#246caa'}" stroke="${inspection ? '#b58a25' : '#246caa'}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>
-        <path d="M${-symbol * 0.4},${-symbol * 0.65} L0,${-symbol * 1.1} L${symbol * 0.4},${-symbol * 0.65}" fill="none" stroke="${inspection ? '#b58a25' : '#246caa'}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+        <path d="M0,${-hull} Q${hull * 0.5},0 ${hull * 0.35},${hull} L${-hull * 0.35},${hull} Q${-hull * 0.5},0 0,${-hull}" fill="${inspection ? '#b58a25' : boatColor}" stroke="${inspection ? '#b58a25' : boatColor}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>
+        <path d="M${-symbol * 0.4},${-symbol * 0.65} L0,${-symbol * 1.1} L${symbol * 0.4},${-symbol * 0.65}" fill="none" stroke="${inspection ? '#b58a25' : boatColor}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
       </g>
       ${follow ? '' : `<g transform="translate(${xmin + margin * 1.1},${-ymax + margin * 1.25})">
         <path d="M0,0 l${-windVector.x * symbol * 4},${windVector.y * symbol * 4}" stroke="#527780" stroke-width="2" vector-effect="non-scaling-stroke"/>

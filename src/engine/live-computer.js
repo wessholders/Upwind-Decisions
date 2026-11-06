@@ -1,10 +1,12 @@
 import { advance, applyAction, initialBoat, sailingHeading, sailingSpeedKnots } from './physics.js';
 import { createTack, turning, recoveryRemaining, turnHeading, maneuverSpeed, tackSpeedCost } from './tack.js';
 import { windSampleAtPosition } from './wind.js';
-import { courseGeometry, courseCrossingFraction, finishApproach, nearestFinishPoint } from './course.js';
-import { direction, dot, radians, signedAngle, closestMarkApproach, markApproachClearance } from './geometry.js';
+import { courseGeometry, courseCrossingFraction, nearestFinishPoint } from './course.js';
+import { direction, dot, radians, signedAngle, markApproachClearance } from './geometry.js';
 import { KNOT_TO_MPS, EXPERT_TACK, STEP } from './config.js';
 import { performanceTarget, performanceSpeed, speedResponse, usesPolar, referenceSpeedKnots } from './performance.js';
+import { currentVelocity } from './current.js';
+import { navigationApproach } from './navigation.js';
 
 const DECISION_INTERVAL = 2;
 const FORECAST_SECONDS = 60;
@@ -31,11 +33,13 @@ export function observeCurrentWind(scenario, boat) {
     heading: sailingHeading(boat, scenario), speedKnots: sailingSpeedKnots(boat, scenario),
     penaltyRemaining: boat.penaltyRemaining, wind: { direction: wind.direction, speedKnots: wind.speedKnots, kind: wind.kind },
     gate: courseGeometry(scenario, boat.time),
+    currentVelocity: currentVelocity(c),
     minAngle: c.minAngle, tackPenalty: c.tackPenalty,
     tackMinSpeedFraction: c.tackMinSpeedFraction, tackRecoverySeconds: c.tackRecoverySeconds,
     performance: { performanceModel: c.performanceModel, boatProfile: c.boatProfile, speedScale: c.speedScale,
       minAngle: c.minAngle, windField: c.windField, speedKnots: c.speedKnots,
-      backgroundWindKnots: c.backgroundWindKnots, pressureExponent: c.pressureExponent },
+      backgroundWindKnots: c.backgroundWindKnots, pressureExponent: c.pressureExponent,
+      current: c.current ? { ...c.current } : undefined, baseline: c.baseline, boatLength: c.boatLength },
     boatLength: c.boatLength,
     map: { bounds, cols, rows, cells } };
 }
@@ -58,10 +62,8 @@ const markEndGoal = (o, position = o.position) => {
   const clearance = markApproachClearance(o.boatLength);
   return { x: o.gate.start.x + dx / length * clearance, y: o.gate.start.y + dy / length * clearance };
 };
-const approachFor = (o, position, tack, wind, preferredDistance = null) => !o.gate.mark
-  ? finishApproach(position, wind.direction, tack, o.minAngle, o.gate, preferredDistance)
-  : closestMarkApproach(position, wind.direction, tack,
-      o.minAngle, o.gate.start, o.gate.end, markApproachClearance(o.boatLength), preferredDistance);
+const approachFor = (o, position, tack, wind, preferredDistance = null, speed = o.speedKnots) =>
+  navigationApproach(position, wind, tack, { ...o.performance, minAngle: o.minAngle, boatLength: o.boatLength }, o.gate, preferredDistance, speed ?? null);
 const observedSpeed = (o, wind, heading = wind.direction + (o.tack === 'starboard' ? -o.minAngle : o.minAngle), maneuver = null, time = o.time) =>
   performanceTarget(o.performance, heading, wind, maneuver, time);
 function predictedHeading(o, position, tack, mode, wind) {
@@ -72,6 +74,7 @@ function predictedHeading(o, position, tack, mode, wind) {
 // A short forecast through a FROZEN current map. This policy has no way to ask
 // what wind will actually occur at a future time. Those predictions can be wrong.
 export function forecastObservedOption(o, action) {
+  const flow = o.currentVelocity ?? { x: 0, y: 0 };
   const tack = action === 'tack' ? otherTack(o.tack) : o.tack;
   const mode = action === 'tack' || action === 'close' ? 'close' : action === 'bear' ? 'gate' : o.mode;
   const position = { ...o.position };
@@ -89,20 +92,20 @@ export function forecastObservedOption(o, action) {
       if (remaining > 1e-9) dt = Math.min(dt, remaining);
     }
     const wind = sampleObservedMap(o, position);
-    const approach = mode === 'gate' ? approachFor(o, position, tack, wind, markAimDistance) : null;
+    const approach = mode === 'gate' ? approachFor(o, position, tack, wind, markAimDistance, currentSpeed) : null;
     markAimDistance = approach?.distanceFromMark ?? null;
     const headingAt = (point, local, time) => turning(maneuver, time)
       ? turnHeading(maneuver, time, local.direction, tack === 'starboard' ? -o.minAngle : o.minAngle)
-      : (mode === 'gate' ? approachFor(o, point, tack, local, markAimDistance)?.heading : null)
+      : (mode === 'gate' ? approachFor(o, point, tack, local, markAimDistance, currentSpeed)?.heading : null)
         ?? local.direction + (tack === 'starboard' ? -o.minAngle : o.minAngle);
     const heading = headingAt(position, wind, now), initial = direction(heading);
     const initialSpeed = performanceSpeed(o.performance, currentSpeed, observedSpeed(o, wind, heading, maneuver, now), maneuver, now) * KNOT_TO_MPS;
     if (mode === 'gate') {
       const side = o.gate.sign * (gateVector.x * (position.y - o.gate.start.y) - gateVector.y * (position.x - o.gate.start.x));
-      const rate = o.gate.sign * (gateVector.x * initial.y - gateVector.y * initial.x) * initialSpeed;
+      const rate = o.gate.sign * (gateVector.x * (initial.y * initialSpeed + flow.y) - gateVector.y * (initial.x * initialSpeed + flow.x));
       if (side < -1e-10 && rate > 1e-10) dt = Math.min(dt, -side / rate * 1.5);
     }
-    const midpoint = { x: position.x + initial.x * initialSpeed * dt / 2, y: position.y + initial.y * initialSpeed * dt / 2 };
+    const midpoint = { x: position.x + (initial.x * initialSpeed + flow.x) * dt / 2, y: position.y + (initial.y * initialSpeed + flow.y) * dt / 2 };
     const local = sampleObservedMap(o, midpoint);
     const middleHeading = headingAt(midpoint, local, now + dt / 2), vector = direction(middleHeading);
     const target = observedSpeed(o, local, middleHeading, maneuver, now + dt / 2);
@@ -110,7 +113,7 @@ export function forecastObservedOption(o, action) {
     const response = speedResponse(o.performance, initialSpeed / KNOT_TO_MPS, target, dt);
     const distance = (maneuvering ? maneuverSpeed(maneuver, now + dt / 2, target) : response.mean) * KNOT_TO_MPS * dt;
     const previous = { ...position };
-    position.x += vector.x * distance; position.y += vector.y * distance;
+    position.x += vector.x * distance + flow.x * dt; position.y += vector.y * distance + flow.y * dt;
     const endWind = sampleObservedMap(o, position);
     currentSpeed = maneuvering ? maneuverSpeed(maneuver, now + dt,
       observedSpeed(o, endWind, headingAt(position, endWind, now + dt), maneuver, now + dt)) : response.end;

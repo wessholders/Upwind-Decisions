@@ -8,7 +8,9 @@ export class ScenarioGenerator {
     this.knots = [{ time: 0, direction: 0 }];
     if (config.regime === 'persistent') {
       const start = between(this.random, 25, 80) * config.tempo;
-      const angle = config.maxShift * between(this.random, 0.65, 1) * (this.random() < 0.5 ? -1 : 1);
+      const magnitude = config.maxShift * between(this.random, 0.65, 1);
+      const randomSign = this.random() < 0.5 ? -1 : 1;
+      const angle = magnitude * (config.shiftDirection || randomSign);
       this.knots.push({ time: start, direction: 0 }, { time: start + between(this.random, 120, 240) * config.tempo, direction: angle });
     }
   }

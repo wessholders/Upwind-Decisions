@@ -1,5 +1,7 @@
 import { DEFAULT_TRAINER_CONFIG, STEP, validateConfig } from './engine/config.js';
-import { advance, applyAction, initialBoat } from './engine/physics.js';
+import { advance, applyAction, initialBoat, sailingHeading } from './engine/physics.js';
+import { windAtPosition } from './engine/wind.js';
+import { signedAngle } from './engine/geometry.js';
 import { createScenario } from './engine/wind.js';
 import { createLiveComputer, advanceLiveComputer } from './engine/live-computer.js';
 import { courseSettings } from './engine/course-config.js';
@@ -11,7 +13,7 @@ export function createTrainer(config = DEFAULT_TRAINER_CONFIG) {
     scenario: createScenario(config), draft: { ...config }, phase: 'ready',
     boat: initialBoat(), track: [initialBoat()], commands: [],
     follow: false, showWind: true, windDisplay: 'streaks', speed: 4, benchmark: null, error: null,
-    accumulator: 0, revision: 0,
+    accumulator: 0, revision: 0, showReference: false, laylineMode: 'wind-only',
     computer: createLiveComputer(), raceTime: 0, computerPaused: false, inspection: null,
   };
 
@@ -21,7 +23,7 @@ export function createTrainer(config = DEFAULT_TRAINER_CONFIG) {
     Object.assign(state, {
       scenario: createScenario(nextConfig), draft: { ...nextConfig }, phase: 'ready',
       boat: initialBoat(), track: [initialBoat()], commands: [],
-      benchmark: null, error: null, accumulator: 0, revision: state.revision + 1,
+      benchmark: null, error: null, accumulator: 0, revision: state.revision + 1, showReference: false,
       computer: createLiveComputer(), raceTime: 0, computerPaused: false, inspection: null,
     });
   }
@@ -29,7 +31,7 @@ export function createTrainer(config = DEFAULT_TRAINER_CONFIG) {
   function togglePause() {
     if (state.inspection) return;
     if (state.phase === 'finished') {
-      if (!state.computer.boat.finished && state.computer.status !== 'timed-out') state.computerPaused = !state.computerPaused;
+      if (state.scenario.config.opponentMode !== 'solo' && !state.computer.boat.finished && state.computer.status !== 'timed-out') state.computerPaused = !state.computerPaused;
       return;
     }
     if (state.phase !== 'finished') state.phase = state.phase === 'sailing' ? 'paused' : 'sailing';
@@ -44,13 +46,13 @@ export function createTrainer(config = DEFAULT_TRAINER_CONFIG) {
   }
 
   function tick(elapsed, hidden = false) {
-    const computerActive = () => !state.computer.boat.finished && state.computer.status !== 'timed-out';
+    const computerActive = () => state.scenario.config.opponentMode !== 'solo' && !state.computer.boat.finished && state.computer.status !== 'timed-out';
     const running = () => state.phase === 'sailing' || (state.phase === 'finished' && !state.computerPaused && computerActive());
     if (!running() || hidden) return;
     state.accumulator += Math.max(0, Math.min(elapsed, 0.2)) * state.speed;
     while (state.accumulator >= STEP && running()) {
       if (!state.boat.finished) state.boat = advance(state.boat, state.scenario);
-      advanceLiveComputer(state.computer, state.scenario, STEP);
+      if (state.scenario.config.opponentMode !== 'solo') advanceLiveComputer(state.computer, state.scenario, STEP);
       state.raceTime += STEP;
       state.accumulator -= STEP;
       const last = state.track[state.track.length - 1];
@@ -60,5 +62,12 @@ export function createTrainer(config = DEFAULT_TRAINER_CONFIG) {
     if (state.boat.finished) state.phase = 'finished';
   }
 
-  return { state, reset, togglePause, act, tick };
+  function steer(degrees) {
+    if (state.phase !== 'sailing') return;
+    const boat = state.boat, scenario = state.scenario;
+    const wind = windAtPosition(scenario, boat.position.x, boat.position.y, boat.time);
+    const angle = boat.mode === 'manual' ? boat.targetAngle : Math.abs(signedAngle(sailingHeading(boat, scenario) - wind));
+    act({ type: 'steer', angle: angle + degrees * (boat.tack === 'starboard' ? -1 : 1) });
+  }
+  return { state, reset, togglePause, act, tick, steer };
 }

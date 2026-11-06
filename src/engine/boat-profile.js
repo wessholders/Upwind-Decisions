@@ -1,7 +1,7 @@
 // Provisional 5 m, 470-inspired MAIN + JIB data supplied for this trainer.
 // Knots throughout. This is editable model data, not measured telemetry.
 export const MAIN_JIB_DINGHY = {
-    id: 'dinghy-main-jib', lengthMeters: 5, sailPlan: 'Main + jib',
+    id: 'dinghy-main-jib', lengthMeters: 5, sailPlan: 'Main + jib', minSailingAngle: 45, maxSailingAngle: 175,
     windSpeeds: [6, 10, 14, 18],
     polar: [
         [0, 0, 0, 0, 0],

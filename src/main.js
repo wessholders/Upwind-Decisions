@@ -1,7 +1,6 @@
 import { createTrainer } from './race-controller.js';
-import { DEFAULT_CONFIG } from './engine/config.js';
 import { normalize } from './engine/geometry.js';
-import { compassHeading, sailingSpeedKnots } from './engine/physics.js';
+import { compassHeading, sailingSpeedKnots, boatGroundTelemetry } from './engine/physics.js';
 import { recoveryRemaining } from './engine/tack.js';
 import { formatTime } from './engine/scoring.js';
 import { windAtPosition, windSampleAtPosition } from './engine/wind.js';
@@ -12,7 +11,11 @@ import { drawWindCanvas } from './views/wind-canvas.js';
 import { RaceWindLayer } from './views/organic-wind.js';
 import { computerLogView } from './views/computer.js';
 import { bearControlView } from './views/bear-control.js';
-import { courseRules, courseSettings, isUpwindFinish } from './engine/course-config.js';
+import { courseRules, isUpwindFinish } from './engine/course-config.js';
+import { createGameShell } from './game-shell.js';
+import { bindSailingKeyboard } from './keyboard.js';
+import { sailingHeading } from './engine/physics.js';
+import { signedAngle } from './engine/geometry.js';
 
 const trainer = createTrainer();
 const { state } = trainer;
@@ -25,11 +28,12 @@ let benchmarkRevision = -1;
 let lastResults = null;
 let lastComputerLogLength = -1;
 const organicWind = new RaceWindLayer();
+let shell = null, keyboard = null;
 
 const compass = degrees => `${(Math.round(degrees) % 360).toString().padStart(3, '0')}°`;
-const computerActive = () => state.computer.status !== 'timed-out' && !state.computer.boat.finished;
+const computerActive = () => state.scenario.config.opponentMode !== 'solo' && state.computer.status !== 'timed-out' && !state.computer.boat.finished;
 const displayedTime = () => state.inspection?.time ?? state.raceTime;
-const needsAnimation = () => !state.inspection && (state.phase === 'sailing' || (state.phase === 'ready' && state.scenario.organicWind) ||
+const needsAnimation = () => shell?.screen === 'session' && !document.hidden && !state.inspection && (state.phase === 'sailing' ||
   (state.phase === 'finished' && !state.computerPaused && computerActive()));
 
 function courseMetrics() {
@@ -49,6 +53,7 @@ function drawWaterWind(elapsed = 0) {
 }
 
 function render(includeWind = true) {
+  if (shell && shell.screen !== 'session') return;
   const { boat, scenario } = state;
   const viewedBoat = state.inspection?.boat ?? boat, time = displayedTime();
   const active = state.phase === 'sailing' || state.phase === 'paused';
@@ -59,19 +64,6 @@ function render(includeWind = true) {
   ui.status.textContent = state.inspection ? `REFERENCE TACK ${state.inspection.number}` : state.phase === 'ready' ? 'READY TO SAIL' : state.phase === 'finished' ? 'LEG COMPLETE' : state.phase.toUpperCase();
   ui['status-dot'].classList.toggle('live', state.phase === 'sailing');
   for (const [id, selected] of [['full-course', !state.follow], ['follow-boat', state.follow]]) ui[id].setAttribute('aria-pressed', String(selected));
-  ui['wind-mode'].value = state.draft.windMode;
-  ui.difficulty.value = state.draft.difficulty;
-  ui['wind-field'].value = state.draft.windField;
-  ui['favored-side'].value = state.draft.favoredSide;
-  ui['course-mode'].value = state.draft.courseMode;
-  for (const name of ['courseLength', 'boatLength', 'gateBoatLengths']) {
-    ui['settings-form'].elements[name].disabled = isUpwindFinish(state.draft);
-  }
-  ui['wind-mode'].disabled = active;
-  ui.difficulty.disabled = active;
-  ui['wind-field'].disabled = active;
-  ui['favored-side'].disabled = active || !scenario.organicWind;
-  ui['organic-settings'].hidden = !scenario.organicWind;
   ui['wind-legend'].hidden = !scenario.organicWind || state.windDisplay === 'hidden';
   ui['wind-vectors'].disabled = !scenario.organicWind;
   ui['wind-display'].value = state.windDisplay;
@@ -87,6 +79,17 @@ function render(includeWind = true) {
   ui['distance-value'].textContent = viewedBoat.distance.toFixed(0);
   ui['tack-count'].textContent = viewedBoat.tacks;
   ui['speed-value'].textContent = viewedBoat.finished ? '0.0' : sailingSpeedKnots({ ...viewedBoat, time }, scenario).toFixed(1);
+  const current = scenario.config.current;
+  document.getElementById('current-indicator').hidden = !current?.enabled;
+  if (current?.enabled) {
+    document.getElementById('current-value').textContent = `${current.speedKnots.toFixed(1)} kn · ${compass(current.directionDegrees)}`;
+    document.getElementById('current-arrow').setAttribute('transform', `rotate(${current.directionDegrees - scenario.config.baseline} 12 12)`);
+    const ground = boatGroundTelemetry(viewedBoat, scenario, viewedBoat.finished ? viewedBoat.time : time);
+    document.getElementById('ground-motion').textContent = `${viewedBoat.finished ? 'At finish · ' : ''}SOG ${ground.speedKnots.toFixed(1)} kn · COG ${ground.courseDegrees === null ? '—' : compass(ground.courseDegrees)}`;
+  }
+  document.getElementById('layline-mode').value = state.laylineMode;
+  document.getElementById('sailing-angle').textContent = `${Math.abs(signedAngle(sailingHeading(viewedBoat, scenario, time) - wind)).toFixed(1)}°`;
+  for (const id of ['steer-left', 'steer-right', 'close-haul']) document.getElementById(id).disabled = state.phase !== 'sailing' || turning;
   ui.tack.disabled = !active || recovering;
   ui['tack-button-text'].textContent = turning ? `Tacking · ${boat.penaltyRemaining.toFixed(1)} s`
     : recovering ? `Recovering · ${recoveryRemaining(boat.tackManeuver, boat.time).toFixed(1)} s` : 'Tack';
@@ -95,15 +98,20 @@ function render(includeWind = true) {
   ui.bear.setAttribute('aria-pressed', String(bear.pressed)); ui.bear.dataset.state = bear.state;
   ui['bear-status'].textContent = bear.description; ui['bear-status'].dataset.state = bear.state;
   ui.start.disabled = Boolean(state.inspection) || (state.phase === 'finished' && !computerActive());
-  ui.start.textContent = state.phase === 'finished' ? (state.computerPaused ? '▶ Resume computer' : computerActive() ? 'Ⅱ Pause computer' : 'Leg complete') : state.phase === 'sailing' ? 'Ⅱ Pause' : state.phase === 'paused' ? '▶ Resume' : '▶ Start sailing';
+  ui.start.textContent = state.phase === 'finished' ? (state.computerPaused ? '▶ Resume computer' : computerActive() ? 'Ⅱ Pause computer' : 'Leg complete') : state.phase === 'sailing' ? 'Ⅱ Pause / Menu' : state.phase === 'paused' ? '▶ Resume' : '▶ Start Race';
   const rules = courseRules(scenario.config), upwind = isUpwindFinish(scenario.config);
   ui['instrument-hint'].textContent = state.inspection ? `Viewing the reference just before tack ${state.inspection.number}. The field and instruments show that decision's time and location.` : state.phase === 'ready'
     ? upwind ? 'Cross the fixed finish line between the pins from downwind to upwind. Either tack may finish.'
       : `Start on starboard. Tack when you choose. Cross the dark gate ${rules.sign > 0 ? 'right to left' : 'left to right'} on ${rules.requiredTack} to finish.`
     : boat.mode === 'gate' ? upwind ? 'Aim for a legal crossing between the fixed finish pins. A tack cancels finish aiming.'
       : `Aim close to the windward mark, leaving it to ${rules.roundingSide} on the finish approach. Steering respects hull clearance and the no-go angle; a tack cancels mark aiming.`
-      : 'The boat follows the wind automatically. You choose when to tack.';
-  ui['reference-legend'].hidden = !state.benchmark?.route;
+      : 'Steer with ← / → or the buttons. The boat follows local wind. Manual steering cancels mark aiming.';
+  const referenceVisible = state.showReference || Boolean(state.inspection);
+  ui['reference-legend'].hidden = !state.benchmark?.route || !referenceVisible;
+  const referenceToggle = document.getElementById('toggle-reference');
+  referenceToggle.hidden = !state.benchmark?.route;
+  referenceToggle.textContent = `${referenceVisible ? 'Hide' : 'Show'} Hindsight Reference`;
+  referenceToggle.setAttribute('aria-pressed', String(referenceVisible));
   ui['wind-history'].hidden = !state.showWind;
   ui['toggle-wind'].textContent = `${state.showWind ? 'Hide' : 'Show'} wind history`;
   ui['toggle-wind'].setAttribute('aria-expanded', String(state.showWind));
@@ -117,7 +125,11 @@ function render(includeWind = true) {
   if (computer.decisions.length !== lastComputerLogLength) {
     ui['computer-log'].innerHTML = computerLogView(computer); lastComputerLogLength = computer.decisions.length;
   }
-  const course = courseView({ ...state, boat: viewedBoat, displayTime: time, viewport: courseMetrics() });
+  const solo = scenario.config.opponentMode === 'solo';
+  document.querySelector('.computer-strip').hidden = solo;
+  document.querySelector('.computer-decisions').hidden = solo;
+  document.querySelector('.course-footer .purple').parentElement.hidden = solo;
+  const course = courseView({ ...state, computer: solo ? null : state.computer, boat: viewedBoat, displayTime: time, viewport: courseMetrics() });
   ui.course.setAttribute('viewBox', course.viewBox);
   ui.course.setAttribute('aria-label', course.label);
   ui.course.innerHTML = course.markup;
@@ -125,7 +137,7 @@ function render(includeWind = true) {
   if (state.showWind) ui['wind-chart'].innerHTML = windHistoryView(scenario, viewedBoat.time, [...(state.inspection ? state.benchmark.route.points : state.track), viewedBoat]);
   ui.results.hidden = state.phase !== 'finished';
   if (!ui.results.hidden) {
-    const markup = resultsView(boat, state.benchmark, state.error, state.computer);
+    const markup = resultsView(boat, state.benchmark, state.error, solo ? null : state.computer, referenceVisible);
     if (markup !== lastResults) { ui.results.innerHTML = markup; lastResults = markup; }
   }
   ui.error.hidden = !state.error || state.phase === 'finished';
@@ -150,7 +162,7 @@ function startBenchmark() {
     current.onmessage = event => finish(event.data.result, event.data.error);
     current.onerror = event => finish(null, event.message || 'Background optimizer failed.');
     current.postMessage({ scenario: state.scenario, commands: state.commands, time: state.boat.time,
-      computer: state.computer.boat.finished ? { commands: state.computer.commands, time: state.computer.boat.time } : null });
+      computer: state.scenario.config.opponentMode !== 'solo' && state.computer.boat.finished ? { commands: state.computer.commands, time: state.computer.boat.time } : null });
   } catch (error) {
     worker?.terminate(); worker = null;
     state.error = error.message;
@@ -163,12 +175,14 @@ function animate(now) {
   const before = state.boat;
   const beforeComputer = state.computer.boat;
   const elapsed = Math.min(0.2, Math.max(0, (now - previousTime) / 1000));
+  keyboard?.tick(elapsed);
+  shell?.tick(elapsed);
   trainer.tick(elapsed, document.hidden);
   previousTime = now;
   if (state.boat !== before || state.computer.boat !== beforeComputer) render(false);
   if (state.scenario.organicWind || state.boat !== before || state.computer.boat !== beforeComputer)
     drawWaterWind(!document.hidden && needsAnimation() ? elapsed : 0);
-  if (state.phase === 'finished') startBenchmark();
+  if (state.phase === 'finished' && shell.screen === 'session') startBenchmark();
   if (needsAnimation()) frame = requestAnimationFrame(animate);
 }
 
@@ -183,20 +197,14 @@ function update() {
   }
 }
 
-function reset(config) {
-  try {
-    trainer.reset(config);
-    worker?.terminate(); worker = null;
-    lastResults = null;
-    lastComputerLogLength = -1;
-    for (const input of ui['settings-form'].querySelectorAll('input[name], select[name]')) input.value = state.draft[input.name];
-  } catch (error) { state.error = error.message; }
-  update();
-}
-
-ui.start.addEventListener('click', () => { trainer.togglePause(); update(); });
-ui.tack.addEventListener('click', () => { trainer.act('tack'); update(); });
-ui.bear.addEventListener('click', () => { trainer.act(state.boat.mode === 'gate' ? 'close' : 'bear'); update(); });
+ui.start.addEventListener('click', () => {
+  if (state.phase === 'ready' || state.phase === 'finished') {
+    keyboard.clear(); trainer.togglePause(); update();
+    document.getElementById('session-screen').focus({ preventScroll: true });
+  } else shell.pauseMenu();
+});
+ui.tack.addEventListener('click', () => { trainer.act('tack'); update(); document.getElementById('session-screen').focus({ preventScroll: true }); });
+ui.bear.addEventListener('click', () => { trainer.act(state.boat.mode === 'gate' ? 'close' : 'bear'); update(); document.getElementById('session-screen').focus({ preventScroll: true }); });
 ui['full-course'].addEventListener('click', () => { state.follow = false; update(); });
 ui['follow-boat'].addEventListener('click', () => { state.follow = true; update(); });
 ui['toggle-wind'].addEventListener('click', () => { state.showWind = !state.showWind; update(); });
@@ -215,43 +223,41 @@ ui.course.addEventListener('keydown', event => {
   const marker = event.target.closest('[data-inspect-tack]');
   if (marker && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); inspectTack(Number(marker.dataset.inspectTack)); }
 });
-ui['inspection-return'].addEventListener('click', () => {
+function returnFromInspection() {
   state.computerPaused = state.inspection?.wasComputerPaused ?? state.computerPaused;
-  state.inspection = null; update();
-});
-ui.playback.addEventListener('change', () => { state.speed = Number(ui.playback.value); });
-ui.retry.addEventListener('click', () => reset(state.scenario.config));
-ui['new-wind'].addEventListener('click', () => reset({ ...state.draft, seed: crypto.getRandomValues(new Uint32Array(1))[0] }));
-for (const [id, key] of [['wind-mode', 'windMode'], ['difficulty', 'difficulty'], ['wind-field', 'windField'], ['favored-side', 'favoredSide']]) {
-  ui[id].addEventListener('change', () => {
-    state.draft = { ...state.draft, [key]: ui[id].value };
-    if (state.phase === 'ready') reset(state.draft);
-    else update();
-  });
+  state.inspection = null;
 }
-ui['traveling-demo'].addEventListener('click', () => {
-  state.speed = 8; ui.playback.value = '8';
-  state.follow = false; state.windDisplay = 'boundaries';
-  reset({ ...DEFAULT_CONFIG, courseLength: 300, windField: 'traveling', windMode: 'persistent', transitionWidth: 30, shiftStartTime: 10 });
+ui['inspection-return'].addEventListener('click', () => { returnFromInspection(); update(); });
+ui.playback.addEventListener('change', () => { state.speed = Number(ui.playback.value); });
+shell = createGameShell({ trainer, update, clearInput: () => keyboard?.clear(),
+  launch(config) {
+    trainer.reset(config);
+    worker?.terminate(); worker = null; lastResults = null; lastComputerLogLength = -1;
+  },
+  exit() {
+    keyboard?.clear(); state.phase = 'paused'; state.computerPaused = true; state.inspection = null;
+    worker?.terminate(); worker = null;
+    cancelAnimationFrame(frame); frame = 0;
+    // Invalidate late worker responses before any next launch.
+    state.revision++;
+  },
 });
-ui['settings-form'].addEventListener('input', event => {
-  if (event.target.matches('input[name]')) state.draft = { ...state.draft, [event.target.name]: event.target.valueAsNumber };
-});
-ui['course-mode'].addEventListener('change', () => {
-  state.draft = courseSettings({ ...state.draft, courseMode: ui['course-mode'].value });
-  for (const name of ['courseLength', 'boatLength', 'gateBoatLengths']) ui['settings-form'].elements[name].value = state.draft[name];
+document.getElementById('toggle-reference').addEventListener('click', () => {
+  const wasVisible = state.showReference || Boolean(state.inspection);
+  if (state.inspection) returnFromInspection();
+  state.showReference = !wasVisible;
   update();
 });
-ui['settings-form'].addEventListener('submit', event => { event.preventDefault(); reset(state.draft); });
-window.addEventListener('keydown', event => {
-  if (event.target.closest('input, select, button, summary, textarea, [contenteditable]') || event.repeat) return;
-  if (event.code === 'Space') { event.preventDefault(); trainer.togglePause(); update(); }
-  if (event.key.toLowerCase() === 't') { trainer.act('tack'); update(); }
-});
-window.addEventListener('pagehide', () => { worker?.terminate(); cancelAnimationFrame(frame); });
+keyboard = bindSailingKeyboard({ enabled: () => shell.screen === 'session' && !shell.modalOpen,
+  steer: delta => trainer.steer(delta), tack: () => { trainer.act('tack'); update(); },
+  pause: () => shell.pauseMenu(), menu: () => shell.pauseMenu() });
+document.addEventListener('visibilitychange', () => { keyboard.clear(); update(); });
+window.addEventListener('pagehide', () => { worker?.terminate(); cancelAnimationFrame(frame); keyboard.clear(); });
+window.addEventListener('pageshow', update);
 ui['startup-error'].hidden = true;
 update();
 new ResizeObserver(() => {
+  if (shell.screen !== 'session') return;
   // The SVG transform resizes itself; the new guides' world-space clip must
   // also follow the visible viewport, including when the race is paused.
   if (isUpwindFinish(state.scenario.config)) render();

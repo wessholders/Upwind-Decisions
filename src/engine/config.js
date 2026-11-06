@@ -21,11 +21,18 @@ export const DEFAULT_CONFIG = {
     persistentShiftAngle: 12, shiftStartTime: 20,
     favoredSide: 'balanced', windBias: 65, windFrequency: 1.5,
     windSizeBL: 35, backgroundWindKnots: 10, windContrast: 30, pressureExponent: 0.5,
+    current: Object.freeze({ enabled: false, speedKnots: 0, directionDegrees: 0 }),
 };
 // The trainer starts with the integrated organic field; all default wind
 // modes share the same polar. Legacy speed response is explicit opt-in.
 export const DEFAULT_TRAINER_CONFIG = { ...DEFAULT_CONFIG, windField: 'organic' };
 export function validateConfig(config) {
+    if (config.current !== undefined) {
+        const c = config.current;
+        if (!c || typeof c.enabled !== 'boolean' || !Number.isFinite(c.speedKnots) || c.speedKnots < 0 || c.speedKnots > 3 ||
+            !Number.isFinite(c.directionDegrees) || c.directionDegrees < 0 || c.directionDegrees >= 360)
+            throw new Error('Current requires On/Off, a speed from 0 to 3 kn, and a toward direction from 0 to less than 360 degrees.');
+    }
     const ranges = {
         courseLength: [100, 5000], speedKnots: [1, 20], speedScale: [0.1, 5], minAngle: [30, 60],
         tackPenalty: [0, 30], tackMinSpeedFraction: [0.1, 1], tackRecoverySeconds: [0, 60],
@@ -44,6 +51,7 @@ export function validateConfig(config) {
     }
     if (!Number.isInteger(config.seed))
         throw new Error('Seed must be an integer.');
+    if (config.shiftDirection !== undefined && ![-1, 0, 1].includes(config.shiftDirection)) throw new Error('Invalid shift direction.');
     if (!Object.hasOwn(COURSE_LABEL, config.courseMode)) throw new Error('Unknown course mode.');
     if (!['polar', 'legacy-pressure'].includes(config.performanceModel) || !Object.hasOwn(BOAT_PROFILES, config.boatProfile))
         throw new Error('Unknown boat performance model or profile.');

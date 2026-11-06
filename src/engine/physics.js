@@ -1,11 +1,14 @@
 import { KNOT_TO_MPS, STEP, EXPERT_TACK } from './config.js';
 import { createTack, turnRemaining, recoveryRemaining, turning, turnHeading, maneuverSpeed } from './tack.js';
-import { direction, headingTo, interpolate, normalize, signedAngle, closestMarkApproach, markApproachClearance, cross, subtract } from './geometry.js';
-import { finishFraction, gateEnd } from './finish.js';
+import { direction, headingTo, interpolate, normalize, signedAngle, cross, subtract } from './geometry.js';
+import { finishFraction } from './finish.js';
 import { windAtPosition, windIntegrationStep, windSampleAtPosition } from './wind.js';
 import { performanceTarget, performanceSpeed, speedResponse, usesPolar } from './performance.js';
-import { courseGeometry, finishApproach } from './course.js';
+import { courseGeometry } from './course.js';
 import { isUpwindFinish } from './course-config.js';
+import { BOAT_PROFILES } from './boat-profile.js';
+import { currentVelocity, groundTelemetry } from './current.js';
+import { navigationApproach } from './navigation.js';
 export const initialBoat = () => ({
     position: { x: 0, y: 0 }, time: 0, tack: 'starboard', mode: 'close',
     penaltyRemaining: 0, penaltyTime: 0, tackManeuver: null, speedKnots: null, distance: 0, tacks: 0, finished: false,
@@ -13,14 +16,11 @@ export const initialBoat = () => ({
 export function gateAimGeometry(boat, scenario, time = boat.time) {
     const wind = windAtPosition(scenario, boat.position.x, boat.position.y, time);
     const close = wind + (boat.tack === 'starboard' ? -scenario.config.minAngle : scenario.config.minAngle);
-    const end = gateEnd(scenario, time);
     const course = courseGeometry(scenario, time), mark = course.mark ?? course.center;
-    const approach = isUpwindFinish(scenario.config)
-        ? finishApproach(boat.position, wind, boat.tack, scenario.config.minAngle, course, boat.markAimDistance ?? null)
-        : closestMarkApproach(boat.position, wind, boat.tack, scenario.config.minAngle,
-            mark, end, markApproachClearance(scenario.config.boatLength), boat.markAimDistance ?? null);
+    const local = windSampleAtPosition(scenario, boat.position.x, boat.position.y, time);
+    const approach = navigationApproach(boat.position, { ...local, direction: wind }, boat.tack, scenario.config, course, boat.markAimDistance ?? null, boat.speedKnots ?? null);
     const target = approach?.target ?? mark;
-    const direct = headingTo(boat.position, target);
+    const direct = approach?.heading ?? headingTo(boat.position, target);
     const angle = signedAngle(direct - wind);
     const legal = Boolean(approach);
     return { target, heading: direct, closeHeading: close, legal,
@@ -42,7 +42,8 @@ export function settledHeading(boat, scenario, time = boat.time) {
         return aim.legal ? aim.heading : aim.closeHeading;
     }
     const wind = windAtPosition(scenario, boat.position.x, boat.position.y, time);
-    return wind + (boat.tack === 'starboard' ? -scenario.config.minAngle : scenario.config.minAngle);
+    const angle = boat.mode === 'manual' ? boat.targetAngle : scenario.config.minAngle;
+    return wind + (boat.tack === 'starboard' ? -angle : angle);
 }
 export function canBearAway(boat, scenario) {
     const aim = gateAimGeometry(boat, scenario);
@@ -56,10 +57,17 @@ export function targetSpeedKnots(boat, scenario, time = boat.time) {
 export function sailingSpeedKnots(boat, scenario, time = boat.time) {
     return performanceSpeed(scenario.config, boat.speedKnots, targetSpeedKnots(boat, scenario, time), boat.tackManeuver, time);
 }
+export const boatGroundTelemetry = (boat, scenario, time = boat.time) =>
+    groundTelemetry(sailingHeading(boat, scenario, time), sailingSpeedKnots(boat, scenario, time), scenario.config);
 export function applyAction(boat, action, scenario) {
     if (boat.finished || turning(boat.tackManeuver, boat.time) ||
         (action === 'tack' && recoveryRemaining(boat.tackManeuver, boat.time) > 1e-9))
         return boat;
+    if (typeof action === 'object' && action?.type === 'steer' && Number.isFinite(action.angle)) {
+        const profile = BOAT_PROFILES[scenario.config.boatProfile];
+        const angle = Math.max(scenario.config.minAngle ?? profile.minSailingAngle, Math.min(profile.maxSailingAngle, action.angle));
+        return { ...boat, mode: 'manual', targetAngle: angle, markAimDistance: null };
+    }
     if (action === 'tack') {
         const wind = windAtPosition(scenario, boat.position.x, boat.position.y, boat.time);
         const maneuver = createTack(boat.time, wind + signedAngle(sailingHeading(boat, scenario) - wind), wind,
@@ -96,9 +104,11 @@ export function advance(boat, scenario, duration = STEP) {
         }
         const v = direction(sailingHeading(state, scenario, state.time + dt / 2));
         const distance = sailingSpeedKnots(state, scenario, state.time + dt / 2) * KNOT_TO_MPS * dt;
-        const position = { x: state.position.x + v.x * distance, y: state.position.y + v.y * distance };
+        const flow = currentVelocity(scenario.config);
+        const dx = v.x * distance + flow.x * dt, dy = v.y * distance + flow.y * dt;
+        const position = { x: state.position.x + dx, y: state.position.y + dy };
         const fraction = finishFraction(scenario, state.position, position, state.time, dt, state.tack);
-        state = movedBoat(state, position, distance, dt, fraction, sailingSpeedKnots(state, scenario));
+        state = movedBoat(state, position, flow.x || flow.y ? Math.hypot(dx, dy) : distance, dt, fraction, sailingSpeedKnots(state, scenario));
     }
     return state;
 }
@@ -113,13 +123,14 @@ function movedBoat(boat, position, distance, dt, fraction, speedKnots) {
 }
 
 function advanceThroughField(boat, scenario, duration) {
+    const flow = currentVelocity(scenario.config), flowSpeed = Math.hypot(flow.x, flow.y);
     const endTime = boat.time + duration;
     let current = boat;
     while (current.time < endTime - 1e-10 && !current.finished) {
         current = refreshMarkApproach(current, scenario);
         const initialSpeed = sailingSpeedKnots(current, scenario) * KNOT_TO_MPS;
         const maximum = endTime - current.time;
-        let dt = windIntegrationStep(scenario, current.position.y, current.time, maximum, initialSpeed, current.position.x);
+        let dt = windIntegrationStep(scenario, current.position.y, current.time, maximum, initialSpeed + flowSpeed, current.position.x);
         if (recoveryRemaining(current.tackManeuver, current.time) > 1e-9) {
             dt = Math.min(dt, EXPERT_TACK.integrationStepSeconds);
             for (const offset of [current.tackManeuver.minimumAt, current.tackManeuver.duration, current.tackManeuver.recovery]) {
@@ -128,14 +139,16 @@ function advanceThroughField(boat, scenario, duration) {
             }
         }
         const gateLength = scenario.config.boatLength * scenario.config.gateBoatLengths;
-        if (Math.hypot(current.position.x, current.position.y - scenario.config.courseLength) < gateLength + initialSpeed * maximum) {
+        if (Math.hypot(current.position.x, current.position.y - scenario.config.courseLength) < gateLength + (initialSpeed + flowSpeed) * maximum) {
             dt = Math.min(dt, windIntegrationStep(scenario, scenario.config.courseLength, current.time, maximum, 0));
         }
         // RK2: sample the field at a predicted midpoint POSITION and time.
         const initial = direction(sailingHeading(current, scenario));
         if (current.mode === 'gate') {
             const course = courseGeometry(scenario, current.time), line = subtract(course.end, course.start);
-            const side = course.sign * cross(line, subtract(current.position, course.start)), rate = course.sign * cross(line, initial) * initialSpeed;
+            const side = course.sign * cross(line, subtract(current.position, course.start));
+            const velocity = { x: initial.x * initialSpeed + flow.x, y: initial.y * initialSpeed + flow.y };
+            const rate = course.sign * cross(line, velocity);
             if (side < -1e-10 && rate > 1e-10) {
                 // Keep the RK2 midpoint on the approach side. Otherwise a
                 // midpoint already beyond the finish sees the mark behind it
@@ -144,15 +157,16 @@ function advanceThroughField(boat, scenario, duration) {
             }
         }
         const midpoint = { ...current, position: {
-            x: current.position.x + initial.x * initialSpeed * dt / 2,
-            y: current.position.y + initial.y * initialSpeed * dt / 2,
+            x: current.position.x + (initial.x * initialSpeed + flow.x) * dt / 2,
+            y: current.position.y + (initial.y * initialSpeed + flow.y) * dt / 2,
         } };
         const target = targetSpeedKnots(midpoint, scenario, current.time + dt / 2);
         const maneuvering = recoveryRemaining(current.tackManeuver, current.time) > 1e-9;
         const speed = (maneuvering ? maneuverSpeed(current.tackManeuver, current.time + dt / 2, target)
             : speedResponse(scenario.config, initialSpeed / KNOT_TO_MPS, target, dt).mean) * KNOT_TO_MPS;
         const v = direction(sailingHeading(midpoint, scenario, current.time + dt / 2));
-        const position = { x: current.position.x + v.x * speed * dt, y: current.position.y + v.y * speed * dt };
+        const dx = (v.x * speed + flow.x) * dt, dy = (v.y * speed + flow.y) * dt;
+        const position = { x: current.position.x + dx, y: current.position.y + dy };
         const fraction = turning(current.tackManeuver, current.time) && !isUpwindFinish(scenario.config) ? null
             : finishFraction(scenario, current.position, position, current.time, dt, current.tack);
         const actualTime = current.time + dt * (fraction ?? 1);
@@ -160,7 +174,7 @@ function advanceThroughField(boat, scenario, duration) {
         const endTarget = targetSpeedKnots({ ...current, position: actualPosition }, scenario, actualTime);
         const endSpeed = maneuvering ? maneuverSpeed(current.tackManeuver, actualTime, endTarget)
             : speedResponse(scenario.config, initialSpeed / KNOT_TO_MPS, target, dt * (fraction ?? 1)).end;
-        current = movedBoat(current, position, speed * dt, dt, fraction, endSpeed);
+        current = movedBoat(current, position, flowSpeed ? Math.hypot(dx, dy) : speed * dt, dt, fraction, endSpeed);
     }
     return current.finished ? current : { ...current, time: endTime };
 }

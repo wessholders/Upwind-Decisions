@@ -1,4 +1,4 @@
-import { STEP } from './config.js';
+import { STEP, KNOT_TO_MPS } from './config.js';
 import { applyAction, advance, sailingHeading, settledHeading, sailingSpeedKnots } from './physics.js';
 import { replay } from './race.js';
 import { direction, signedAngle, normalize } from './geometry.js';
@@ -6,6 +6,7 @@ import { windSampleAtPosition } from './wind.js';
 import { courseGeometry, prevailingFinishWind, finishLineBias } from './course.js';
 import { courseRules, isUpwindFinish } from './course-config.js';
 import { performanceTarget } from './performance.js';
+import { currentVelocity, groundVelocity } from './current.js';
 
 export const TACK_COMPARISON_DELAY = 10;
 export const MAX_FINISH_COMPARISONS = 8;
@@ -77,6 +78,10 @@ export function describeTack(scenario, route, commandIndex, number, decision, co
     oldHeading: normalize(oldHeading + scenario.config.baseline), newHeading: normalize(newHeading + scenario.config.baseline),
     oldUpCourseKnots: speed * direction(oldHeading).y,
     newUpCourseKnots: performanceTarget(scenario.config, newHeading, wind) * direction(newHeading).y,
+    ...(scenario.config.current?.enabled ? {
+      oldGroundUpCourseKnots: groundVelocity(oldHeading, speed, currentVelocity(scenario.config)).y / KNOT_TO_MPS,
+      newGroundUpCourseKnots: groundVelocity(newHeading, performanceTarget(scenario.config, newHeading, wind), currentVelocity(scenario.config)).y / KNOT_TO_MPS,
+    } : {}),
     observedWindChange: change, observationSeconds: before.time - previous.time, trend,
     finalTack: !route.commands.slice(commandIndex + 1).some(c => c.action === 'tack'),
     projectionSeconds: duration, tackNow: now, keepGoing: hold, finishDifference: difference,
