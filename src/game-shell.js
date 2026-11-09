@@ -10,7 +10,7 @@ export function createGameShell({ trainer, launch, exit, update, clearInput }) {
   let storage;
   try { storage = window.localStorage; } catch { /* Private browsing may deny even the getter. */ }
   const preferences = loadPreferences(storage);
-  let draft = createSetup(), screen = 'lobby', step = 0, launchedConfig = null;
+  let draft = { ...createSetup(), npcCount: 1 }, screen = 'lobby', step = 0, launchedConfig = null;
   const session = $('session-screen'), home = $('home-screen');
   home.innerHTML = `<canvas id="lobby-water" aria-hidden="true"></canvas>
     <section id="lobby" class="lobby-content" aria-labelledby="lobby-title">
@@ -34,7 +34,7 @@ export function createGameShell({ trainer, launch, exit, update, clearInput }) {
         <details id="wind-advanced" class="setup-details"><summary>Advanced Wind Settings</summary><div id="wind-settings-slot"></div></details>
         <fieldset class="current-settings"><legend>Water current</legend><label class="toggle-row"><input id="current-enabled" type="checkbox"><span>Enable uniform current</span></label><div id="current-options" hidden><div id="current-random-settings"><label>Maximum Current Speed (kn)<input id="current-max" type="number" value="1.5" min="0" max="3" step="any" required></label><p>Randomize Scenario is on: speed is sampled from zero to this maximum, with a direction anywhere on the compass.</p></div><div id="current-manual-settings" class="current-manual-fields" hidden><label>Manual current speed (kn)<input id="current-speed" type="number" value="0" min="0" max="3" step="any" required></label><label>Flows toward (°)<input id="current-direction" type="number" value="0" min="0" max="359" step="any" required></label></div><p id="current-preview" role="status"></p><p>Direction is where the water flows toward. Current stays uniform and constant throughout the race.</p></div></fieldset>
       </div>
-      <div data-card="2" hidden><p class="step-intro">Make space to practice, or put your decisions to the test.</p><div class="opponent-options"><button data-opponent="solo" class="selection-option"><span class="option-number">01</span><strong>Solo Training</strong><span>Read the water and sail at your own pace.</span></button><button data-opponent="npc" class="selection-option"><span class="option-number">02</span><strong>Race NPC</strong><span>Race the existing computer using the same wind and boat model.</span></button></div></div>
+      <div data-card="2" hidden><p class="step-intro">Make space to practice, or put your decisions to the test.</p><div class="opponent-options"><button data-opponent="solo" class="selection-option"><span class="option-number">01</span><strong>Solo Training</strong><span>Read the water and sail at your own pace.</span></button><button data-opponent="npc" class="selection-option"><span class="option-number">02</span><strong>Race NPCs</strong><span>All-Rounder sailors share your wind and boat model.</span></button></div><label class="fleet-count" id="npc-count-control">NPC boats<select id="npc-count">${Array.from({ length: 8 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')}</select><span>Skills spread automatically from Beginner through Elite.</span></label></div>
       <div data-card="3" hidden><p class="step-intro">Your water. Your route. Ready when you are.</p><dl id="review" class="review-list"></dl></div>
       <p id="setup-error" role="alert" class="error" hidden></p>
       <div class="setup-navigation"><button id="setup-back" class="secondary-action">Back</button><span id="step-label"></span><button id="setup-next" class="primary-action">Continue →</button></div>
@@ -116,6 +116,8 @@ export function createGameShell({ trainer, launch, exit, update, clearInput }) {
     $('preset-description').textContent = WIND_PRESETS[draft.windPreset]?.description || 'Your advanced settings define this scenario.';
     for (const b of home.querySelectorAll('[data-course]')) b.setAttribute('aria-pressed', String(b.dataset.course === draft.courseMode));
     for (const b of home.querySelectorAll('[data-opponent]')) b.setAttribute('aria-pressed', String(b.dataset.opponent === draft.opponentMode));
+    $('npc-count').value = draft.npcCount;
+    $('npc-count-control').hidden = draft.opponentMode !== 'npc';
     syncCurrent();
   }
   function currentDescription() {
@@ -149,7 +151,7 @@ export function createGameShell({ trainer, launch, exit, update, clearInput }) {
     $('step-label').textContent = `STEP ${step + 1} OF 4`;
     $('setup-next').textContent = step === 3 ? 'GO TO COURSE ↗' : 'Continue →';
     $('setup-back').textContent = step === 0 ? 'Lobby' : 'Back';
-    const values = [['Environment', 'Open Water'], ['Course', COURSE_LABEL[draft.courseMode]], ['Boat', `${draft.boatLength} m dinghy · Main + jib`], ['Wind', WIND_PRESETS[draft.windPreset]?.label || 'Custom'], ['Base wind', `${draft.backgroundWindKnots} kn`], ['Randomization', draft.randomize ? 'On · seeded variation' : 'Off · fixed parameters'], ['Seed', draft.seed], ['Current', currentDescription()], ['Opponent', draft.opponentMode === 'npc' ? 'Race NPC' : 'Solo Training']];
+    const values = [['Environment', 'Open Water'], ['Course', COURSE_LABEL[draft.courseMode]], ['Boat', `${draft.boatLength} m dinghy · Main + jib`], ['Wind', WIND_PRESETS[draft.windPreset]?.label || 'Custom'], ['Base wind', `${draft.backgroundWindKnots} kn`], ['Randomization', draft.randomize ? 'On · seeded variation' : 'Off · fixed parameters'], ['Seed', draft.seed], ['Current', currentDescription()], ['Opponent', draft.opponentMode === 'npc' ? `${draft.npcCount} All-Rounder NPC${draft.npcCount === 1 ? '' : 's'}` : 'Solo Training']];
     $('review').replaceChildren(...values.flatMap(([key, value]) => { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = key; dd.textContent = value; return [dt, dd]; }));
     $('setup-title').focus({ preventScroll: true });
   }
@@ -197,6 +199,7 @@ export function createGameShell({ trainer, launch, exit, update, clearInput }) {
     updateCurrentPreview();
   });
   home.addEventListener('change', e => {
+    if (e.target.id === 'npc-count') { draft = { ...draft, npcCount: Number(e.target.value) }; syncDraft(); }
     const bindings = { 'wind-mode': 'windMode', difficulty: 'difficulty', 'wind-field': 'windField', 'favored-side': 'favoredSide', 'course-mode': 'courseMode' };
     if (bindings[e.target.id]) {
       draft = courseSettings({ ...draft, [bindings[e.target.id]]: e.target.value });

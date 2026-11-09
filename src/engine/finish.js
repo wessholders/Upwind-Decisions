@@ -1,9 +1,11 @@
 import { cross, direction, dot, interpolate, subtract, markContactClearance, distanceToSegment } from './geometry.js';
-import { windAtPosition } from './wind.js';
+import { windAtPosition, providedCourse } from './environment-provider.js';
 import { courseRules, isUpwindFinish } from './course-config.js';
 import { courseGeometry, courseCrossingFraction } from './course.js';
 export const windAtMark = (scenario, time) => windAtPosition(scenario, 0, scenario.config.courseLength, time);
 export function gateEnd(scenario, time) {
+    const snapshot = providedCourse(scenario);
+    if (snapshot) return snapshot.end;
     if (isUpwindFinish(scenario.config)) return scenario.course.end;
     const v = direction(windAtMark(scenario, time));
     const length = scenario.config.boatLength * scenario.config.gateBoatLengths;
@@ -12,6 +14,8 @@ export function gateEnd(scenario, time) {
 // Find a crossing of the rotating finite gate during a linear integration substep.
 // A sweeping gate alone cannot finish a stationary or rightward-moving boat.
 export function finishFraction(scenario, from, to, startTime, dt, tack) {
+    const snapshot = providedCourse(scenario);
+    if (snapshot) return courseCrossingFraction(snapshot, from, to, tack);
     if (isUpwindFinish(scenario.config)) return courseCrossingFraction(courseGeometry(scenario), from, to, tack);
     const rules = courseRules(scenario.config);
     if (tack !== rules.requiredTack || rules.sign * (to.x - from.x) >= -1e-12)

@@ -2,13 +2,15 @@ import { courseRules, isUpwindFinish } from './course-config.js';
 export { fixedUpwindFinish } from './course-config.js';
 import { KNOT_TO_MPS } from './config.js';
 import { direction, dot, cross, subtract, interpolate, headingTo, validHeading, markContactClearance, distanceToSegment } from './geometry.js';
-import { windAtPosition, windSampleAtPosition } from './wind.js';
+import { windAtPosition, windSampleAtPosition, providedCourse } from './environment-provider.js';
 import { predictedLayline } from './current.js';
 
 export const FINISH_GUIDES = { length: 200, opacity: 0.28, strokeWidth: 1.5, fadeStart: 0.7,
   smoothingSeconds: 6, temporalSamples: 7, sampleOffset: 25 };
 
 export function courseGeometry(scenario, time = 0) {
+  const snapshot = providedCourse(scenario);
+  if (snapshot) return snapshot;
   const rules = { ...courseRules(scenario.config), boatLength: scenario.config.boatLength };
   if (isUpwindFinish(scenario.config)) return { ...scenario.course, ...rules, mark: null };
   const mark = { x: 0, y: scenario.config.courseLength };

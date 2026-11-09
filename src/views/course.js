@@ -7,10 +7,27 @@ import { courseGeometry } from '../engine/course.js';
 import { isUpwindFinish, COURSE_LABEL } from '../engine/course-config.js';
 import { finishGuidesView, COURSE_THEME } from './finish-guides.js';
 import { courseProjection } from './wind-canvas.js';
+import { escapeHtml } from './html.js';
 
-const path = points => points.map((p, i) => `${i ? 'L' : 'M'}${p.position.x.toFixed(2)},${(-p.position.y).toFixed(2)}`).join(' ');
+// Tracks append immutable boat snapshots. Extend the cached geometry once per
+// new point rather than scanning nine complete histories on every frame.
+const trackGeometry = new WeakMap();
+function geometryFor(points) {
+  let cached = trackGeometry.get(points);
+  if (!cached || cached.length > points.length || (cached.length && points[cached.length - 1] !== cached.tail))
+    cached = { length: 0, path: '', xmin: Infinity, xmax: -Infinity, ymin: Infinity, ymax: -Infinity };
+  for (let i = cached.length; i < points.length; i++) {
+    const { position } = points[i];
+    cached.path += `${i ? ' L' : 'M'}${position.x.toFixed(2)},${(-position.y).toFixed(2)}`;
+    cached.xmin = Math.min(cached.xmin, position.x); cached.xmax = Math.max(cached.xmax, position.x);
+    cached.ymin = Math.min(cached.ymin, position.y); cached.ymax = Math.max(cached.ymax, position.y);
+  }
+  cached.length = points.length; cached.tail = points.at(-1);
+  trackGeometry.set(points, cached); return cached;
+}
+const path = points => geometryFor(points).path;
 
-export function courseView({ scenario, boat, track, benchmark, follow, computer = null, inspection = null, displayTime = boat.time, viewport = null, boatColor = '#246caa', showReference = false, laylineMode = 'wind-only' }) {
+export function courseView({ scenario, boat, track, benchmark, follow, computer = null, npcs = computer ? [computer] : [], inspection = null, displayTime = boat.time, viewport = null, boatColor = '#246caa', showReference = false, laylineMode = 'wind-only' }) {
   // Hidden references must not affect camera bounds or expose tack markers.
   if (!showReference && !inspection) benchmark = null;
   if (!/^#[0-9a-f]{6}$/i.test(boatColor)) boatColor = '#246caa';
@@ -30,11 +47,10 @@ export function courseView({ scenario, boat, track, benchmark, follow, computer 
     xmin = Math.min(xmin, pin.x - margin); xmax = Math.max(xmax, pin.x + margin);
     ymin = Math.min(ymin, pin.y - margin); ymax = Math.max(ymax, pin.y + margin);
   }
-  for (const points of [track, computer?.track ?? [], benchmark?.route?.points ?? []]) {
-    for (const { position } of points) {
-      xmin = Math.min(xmin, position.x - margin); xmax = Math.max(xmax, position.x + margin);
-      ymin = Math.min(ymin, position.y - margin); ymax = Math.max(ymax, position.y + margin);
-    }
+  for (const points of [track, ...npcs.map(npc => npc.track), benchmark?.route?.points ?? []]) {
+    const bounds = geometryFor(points);
+    xmin = Math.min(xmin, bounds.xmin - margin); xmax = Math.max(xmax, bounds.xmax + margin);
+    ymin = Math.min(ymin, bounds.ymin - margin); ymax = Math.max(ymax, bounds.ymax + margin);
   }
   const span = Math.min(550, config.courseLength * 0.7);
   const viewBox = follow
@@ -71,9 +87,14 @@ export function courseView({ scenario, boat, track, benchmark, follow, computer 
     <circle cx="${p.position.x}" cy="${-p.position.y}" r="${symbol * 1.3}" fill="transparent"/>
     <circle cx="${p.position.x}" cy="${-p.position.y}" r="${symbol * 0.5}" fill="${inspection?.number === i + 1 ? '#946900' : '#d3a63f'}" stroke="#fff" stroke-width="1.3" vector-effect="non-scaling-stroke"/>
     <text x="${p.position.x + symbol * 0.7}" y="${-p.position.y - symbol * 0.65}" fill="#8a650f" font-size="${symbol * 0.9}" font-weight="700">${i + 1}</text></g>` : '').join('');
-  const cb = computer?.boat;
-  const computerMarkup = cb && !inspection ? `<path d="${path(computer.track)}" fill="none" stroke="#855ab1" stroke-width="2.2" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
-    <g transform="translate(${cb.position.x},${-cb.position.y}) rotate(${sailingHeading(cb, scenario)})"><circle r="${symbol * 1.05}" fill="#faf5ff" stroke="#855ab1" stroke-width="1.1" vector-effect="non-scaling-stroke"/><path d="M0,${-symbol * 0.7} L${symbol * 0.45},${symbol * 0.45} L${-symbol * 0.45},${symbol * 0.45}Z" fill="#855ab1"/></g>` : '';
+  const npcSymbol = Math.min(symbol, config.boatLength * 1.2);
+  const computerMarkup = inspection ? '' : npcs.map((npc, index) => {
+    const cb = npc.boat, identity = npc.identity, color = identity?.color ?? '#855ab1';
+    return `<path class="npc-track" d="${path(npc.track)}" fill="none" stroke="${color}" stroke-width="1.7" stroke-dasharray="3 4" opacity="0.7" vector-effect="non-scaling-stroke"/>
+      <g class="npc-boat" data-racer-id="${escapeHtml(identity?.id ?? npc.configuration?.id ?? 'computer')}" transform="translate(${cb.position.x},${-cb.position.y})"><title>${escapeHtml(identity ? `${identity.shortLabel} · ${identity.tier}` : 'Live computer')}</title>
+      <g transform="rotate(${sailingHeading(cb, scenario)})"><circle r="${npcSymbol * 1.05}" fill="#fff" fill-opacity="0.8" stroke="${color}" stroke-width="1.1" vector-effect="non-scaling-stroke"/><path d="M0,${-npcSymbol * 0.7} L${npcSymbol * 0.45},${npcSymbol * 0.45} L${-npcSymbol * 0.45},${npcSymbol * 0.45}Z" fill="${color}"/></g>
+      <text x="0" y="${-npcSymbol * (2 + index % 3 * 2)}" text-anchor="middle" fill="${color}" font-size="${symbol * 0.75}" font-weight="700">${escapeHtml(identity?.shortLabel ?? 'NPC')}</text></g>`;
+  }).join('');
   return {
     viewBox,
     label: `Sailing course. Boat ${Math.round(boat.position.x)} meters east and ${Math.round(boat.position.y)} meters up course. Wind shift ${wind.toFixed(1)} degrees. ${COURSE_LABEL[geometry.mode]}.`,

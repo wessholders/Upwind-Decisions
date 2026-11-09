@@ -1,0 +1,198 @@
+{
+  "browser": "Edg/157.0.4341.42",
+  "notes": "Headless Edge real RAF; desktop and mobile viewport emulation on the same desktop CPU. Organic pressure/wind + 1.2 kn cross-current; eight active NPCs; 5 s per playback speed. Gameplay finishes tested separately with controlled RAF.",
+  "errors": [],
+  "courses": [
+    {
+      "mode": "round-port",
+      "finishers": 9,
+      "standings": [
+        "1AR3Beginner2:47.98",
+        "2AR2Beginner2:48.13",
+        "3AR1Beginner2:49.10",
+        "4AR7Advanced2:49.24",
+        "5AR8Elite2:49.39",
+        "6AR5Intermediate2:49.52",
+        "7AR4Intermediate2:49.57",
+        "8AR6Advanced2:49.80",
+        "9YOUHuman2:50.00"
+      ]
+    },
+    {
+      "mode": "round-starboard",
+      "finishers": 9,
+      "standings": [
+        "1AR3Beginner2:47.99",
+        "2AR2Beginner2:48.01",
+        "3AR4Intermediate2:48.21",
+        "4AR7Advanced2:48.65",
+        "5AR8Elite2:49.18",
+        "6AR5Intermediate2:49.23",
+        "7AR1Beginner2:49.31",
+        "8AR6Advanced2:49.62",
+        "9YOUHuman2:55.01"
+      ]
+    },
+    {
+      "mode": "finish-upwind",
+      "finishers": 9,
+      "standings": [
+        "1AR8Elite9:07.25",
+        "1YOUHuman9:07.25",
+        "1AR1Beginner9:07.25",
+        "1AR2Beginner9:07.25",
+        "1AR3Beginner9:07.25",
+        "1AR4Intermediate9:07.25",
+        "1AR5Intermediate9:07.25",
+        "1AR6Advanced9:07.25",
+        "1AR7Advanced9:07.25"
+      ]
+    }
+  ],
+  "measurements": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000,
+        "mobile": false
+      },
+      "speed": 1,
+      "frames": 301,
+      "wallMilliseconds": 5003.499999999255,
+      "fps": 60.1578894773748,
+      "p50FrameMilliseconds": 16.699999999999818,
+      "p95FrameMilliseconds": 16.700000000000728,
+      "maxFrameMilliseconds": 16.800000000000182,
+      "longTasks": 0,
+      "maxLongTaskMilliseconds": 0,
+      "npcBoats": 8,
+      "fitsViewport": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000,
+        "mobile": false
+      },
+      "speed": 4,
+      "frames": 300,
+      "wallMilliseconds": 5007.799999999999,
+      "fps": 59.90654578856984,
+      "p50FrameMilliseconds": 16.69999999999891,
+      "p95FrameMilliseconds": 16.700000000000728,
+      "maxFrameMilliseconds": 33.29999999999927,
+      "longTasks": 0,
+      "maxLongTaskMilliseconds": 0,
+      "npcBoats": 8,
+      "fitsViewport": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000,
+        "mobile": false
+      },
+      "speed": 8,
+      "frames": 298,
+      "wallMilliseconds": 5003.599999999256,
+      "fps": 59.557118874419274,
+      "p50FrameMilliseconds": 16.69999999999891,
+      "p95FrameMilliseconds": 16.700000000000728,
+      "maxFrameMilliseconds": 33.400000000001455,
+      "longTasks": 0,
+      "maxLongTaskMilliseconds": 0,
+      "npcBoats": 8,
+      "fitsViewport": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000,
+        "mobile": false
+      },
+      "speed": 16,
+      "frames": 280,
+      "wallMilliseconds": 5007.599999999256,
+      "fps": 55.91500918604552,
+      "p50FrameMilliseconds": 16.700000000000728,
+      "p95FrameMilliseconds": 33.29999999999927,
+      "maxFrameMilliseconds": 50,
+      "longTasks": 0,
+      "maxLongTaskMilliseconds": 0,
+      "npcBoats": 8,
+      "fitsViewport": true
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "mobile": true
+      },
+      "speed": 1,
+      "frames": 301,
+      "wallMilliseconds": 5016.00000000149,
+      "fps": 60.00797448164087,
+      "p50FrameMilliseconds": 16.699999999999818,
+      "p95FrameMilliseconds": 16.799999999999727,
+      "maxFrameMilliseconds": 33.40000000000009,
+      "longTasks": 0,
+      "maxLongTaskMilliseconds": 0,
+      "npcBoats": 8,
+      "fitsViewport": true
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "mobile": true
+      },
+      "speed": 4,
+      "frames": 301,
+      "wallMilliseconds": 5012.5,
+      "fps": 60.0498753117207,
+      "p50FrameMilliseconds": 16.69999999999891,
+      "p95FrameMilliseconds": 16.800000000000182,
+      "maxFrameMilliseconds": 16.80000000000109,
+      "longTasks": 0,
+      "maxLongTaskMilliseconds": 0,
+      "npcBoats": 8,
+      "fitsViewport": true
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "mobile": true
+      },
+      "speed": 8,
+      "frames": 301,
+      "wallMilliseconds": 5010.600000000744,
+      "fps": 60.07264599049122,
+      "p50FrameMilliseconds": 16.69999999999891,
+      "p95FrameMilliseconds": 16.700000000000728,
+      "maxFrameMilliseconds": 16.80000000000109,
+      "longTasks": 0,
+      "maxLongTaskMilliseconds": 0,
+      "npcBoats": 8,
+      "fitsViewport": true
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "mobile": true
+      },
+      "speed": 16,
+      "frames": 299,
+      "wallMilliseconds": 5009.200000000001,
+      "fps": 59.69017008703984,
+      "p50FrameMilliseconds": 16.69999999999709,
+      "p95FrameMilliseconds": 16.799999999999272,
+      "maxFrameMilliseconds": 33.400000000001455,
+      "longTasks": 0,
+      "maxLongTaskMilliseconds": 0,
+      "npcBoats": 8,
+      "fitsViewport": true
+    }
+  ]
+}

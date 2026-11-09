@@ -30,3 +30,16 @@ body[data-screen=session] .site-header{height:64px}body[data-screen=session] .br
 @media(max-width:360px){body[data-screen=session] .brand{font-size:15px;letter-spacing:1px}.brand-sub{font-size:6px;letter-spacing:.6px}.brand svg{width:21px}.session-navigation button{padding:8px 7px}}
 .current-settings{margin:26px 0 0;padding:18px;border:1px solid #b8cbcc;border-radius:3px;color:#44646e}.current-settings legend{font-size:12px;font-weight:600;padding:0 6px}.current-settings .toggle-row{margin:0 0 12px;font-size:12px}.current-settings label:not(.toggle-row){display:flex;flex-direction:column;gap:8px;font-size:11px}.current-settings p{font-size:11px;line-height:1.7;color:#637e85}.current-settings #current-preview{font-weight:600;color:#285b54}.current-manual-fields{display:grid;grid-template-columns:1fr 1fr;gap:18px}#current-random-settings{max-width:440px}.layline-control{display:flex;align-items:center;gap:14px;margin:14px 16px;font-size:11px;color:#45656d}.layline-control select{background:#f7fbf8;border:1px solid #afc2c5;color:#294853;padding:9px;border-radius:3px;min-height:40px}.current-indicator{border-bottom:1px solid #36505c;padding:10px 0;color:#c4d8d7}.current-indicator>span{font-size:8px;letter-spacing:1px;color:#a8c4b8}.current-indicator strong{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:6px;font-weight:500;font-variant-numeric:tabular-nums}.current-indicator small{display:block;font-size:9px;color:#a4bac2;margin-top:6px}
 @media(max-width:620px){.current-indicator{grid-column:1/-1;grid-row:4;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;padding:8px 0}.current-indicator strong{font-size:12px;margin:0}.current-indicator small{width:100%;margin:0}.current-indicator:not([hidden])~.sailing-controls{grid-row:5}.current-indicator:not([hidden])~.playback{grid-row:6}.current-manual-fields{gap:12px}.layline-control{margin:14px 12px;justify-content:space-between}}
+/* Compact additions to the existing opponent card and race display. */
+.fleet-count { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+.fleet-count select, #npc-log-select { padding: 7px 12px; border: 1px solid #c8d5d7; border-radius: 6px; background: white; color: #223e48; }
+.fleet-count span { font-size: .85rem; color: #536d76; }
+.fleet-standings { margin: 14px 0; padding: 12px 16px; border: 1px solid #cfdddf; border-radius: 8px; background: #fff; }
+.fleet-standings summary { cursor: pointer; font-weight: 600; }
+.fleet-standings > div { overflow-x: auto; }
+.fleet-standings table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: .85rem; text-align: left; }
+.fleet-standings caption { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
+.fleet-standings td, .fleet-standings th { padding: 7px 6px; border-bottom: 1px solid #e7eeee; white-space: nowrap; }
+.fleet-standings p { font-size: .75rem; color: #536d76; margin-bottom: 0; }
+.human-standing { background: #edf5fa; }
+.boat-chip { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }

@@ -2,7 +2,8 @@ import { KNOT_TO_MPS, STEP, EXPERT_TACK } from './config.js';
 import { createTack, turnRemaining, recoveryRemaining, turning, turnHeading, maneuverSpeed } from './tack.js';
 import { direction, headingTo, interpolate, normalize, signedAngle, cross, subtract } from './geometry.js';
 import { finishFraction } from './finish.js';
-import { windAtPosition, windIntegrationStep, windSampleAtPosition } from './wind.js';
+import { windAtPosition, windIntegrationStep, windSampleAtPosition,
+    hasEnvironmentProvider, physicsStepCallback } from './environment-provider.js';
 import { performanceTarget, performanceSpeed, speedResponse, usesPolar } from './performance.js';
 import { courseGeometry } from './course.js';
 import { isUpwindFinish } from './course-config.js';
@@ -94,14 +95,16 @@ export function advance(boat, scenario, duration = STEP) {
     if (boat.finished)
         return boat;
     let state = refreshMarkApproach(boat, scenario);
+    const beforeStep = physicsStepCallback(scenario);
     const endTime = boat.time + duration;
     while (state.time < endTime - 1e-9 && !state.finished) {
         state = refreshMarkApproach(state, scenario);
         const dt = Math.min(STEP, endTime - state.time);
-        if (usesPolar(scenario.config) || scenario.config.windField === 'traveling' || scenario.organicWind || recoveryRemaining(state.tackManeuver, state.time) > 1e-9) {
-            state = advanceThroughField(state, scenario, dt);
+        if (usesPolar(scenario.config) || scenario.config.windField === 'traveling' || scenario.organicWind || hasEnvironmentProvider(scenario) || recoveryRemaining(state.tackManeuver, state.time) > 1e-9) {
+            state = advanceThroughField(state, scenario, dt, beforeStep);
             continue;
         }
+        beforeStep?.();
         const v = direction(sailingHeading(state, scenario, state.time + dt / 2));
         const distance = sailingSpeedKnots(state, scenario, state.time + dt / 2) * KNOT_TO_MPS * dt;
         const flow = currentVelocity(scenario.config);
@@ -122,11 +125,12 @@ function movedBoat(boat, position, distance, dt, fraction, speedKnots) {
         tackManeuver: recoveryRemaining(boat.tackManeuver, time) > 1e-9 ? boat.tackManeuver : null };
 }
 
-function advanceThroughField(boat, scenario, duration) {
+function advanceThroughField(boat, scenario, duration, beforeStep) {
     const flow = currentVelocity(scenario.config), flowSpeed = Math.hypot(flow.x, flow.y);
     const endTime = boat.time + duration;
     let current = boat;
     while (current.time < endTime - 1e-10 && !current.finished) {
+        beforeStep?.();
         current = refreshMarkApproach(current, scenario);
         const initialSpeed = sailingSpeedKnots(current, scenario) * KNOT_TO_MPS;
         const maximum = endTime - current.time;

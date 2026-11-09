@@ -34,7 +34,7 @@
             <label>Favored side<select id="favored-side"><option value="balanced">Balanced</option><option value="left">Left favored</option><option value="right">Right favored</option></select></label>
           </div>
         </div>
-        <section class="computer-strip" aria-label="Live computer opponent"><strong><i></i>LIVE COMPUTER</strong><span id="computer-state">Ready to race</span><span id="computer-reason">Uses current wind observations, with no future wind schedule.</span></section>
+        <section class="computer-strip" aria-label="Computer opponents"><strong><i></i><span id="opponent-label">LIVE COMPUTER</span></strong><span id="computer-state">Ready to race</span><span id="computer-reason">Uses current wind observations, with no future wind schedule.</span></section>
         <div id="inspection-banner" class="inspection-banner" hidden><strong id="inspection-label"></strong><button id="inspection-return" type="button">Return to live / finish view</button></div>
         <div class="race-layout">
           <section class="course-panel" aria-label="Interactive racecourse">
@@ -46,7 +46,7 @@
               <canvas id="wind-canvas" class="wind-canvas" aria-hidden="true"></canvas>
               <svg id="course" class="course-svg" viewBox="-580 -1180 1160 1260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sailing course"></svg>
             </div>
-            <div class="course-footer"><span><span class="legend-line blue"></span>You</span><span><span class="legend-line purple"></span>Live computer</span><span id="reference-legend" hidden><span class="legend-line gold"></span>Hindsight</span><span class="scale-note">Equal scale · meters</span></div>
+            <div class="course-footer"><span><span class="legend-line blue"></span>You</span><span><span class="legend-line purple"></span><span id="opponent-legend">Live computer</span></span><span id="reference-legend" hidden><span class="legend-line gold"></span>Hindsight</span><span class="scale-note">Equal scale · meters</span></div>
             <div class="wind-view-controls"><label class="wind-display-control">Wind on water<select id="wind-display"><option value="streaks">Particles &amp; water</option><option value="boundaries">Identify puffs / pockets</option><option value="hidden">Hidden</option></select></label><label class="vector-control"><input id="wind-vectors" type="checkbox"> Debug wind vectors</label></div>
             <div class="wind-view-time" id="wind-time">Wind at 0:00</div><div id="wind-legend" class="wind-legend" title="Particle ratios are core density targets relative to background; edges blend smoothly."><span><i class="pressure-puff" aria-hidden="true"></i><span><strong>Puff · stronger wind</strong><small>Darker water · 4× particles · faster</small></span></span><span><i class="pressure-pocket" aria-hidden="true"></i><span><strong>Pocket · lighter wind</strong><small>Lighter water · 0.4× particles · slower</small></span></span></div>
           </section>
@@ -72,9 +72,10 @@
           </aside>
         </div>
         <div class="utility-row"><div><button id="new-wind" type="button">↻ New wind</button><button id="retry" type="button">Retry same wind</button></div><button id="toggle-wind" type="button" aria-expanded="true" aria-controls="wind-history">Hide wind history</button></div>
+        <details id="fleet-standings" class="fleet-standings" open hidden><summary>Fleet standings</summary><div id="standings-table"></div></details>
         <section id="results" class="results" aria-live="polite" hidden></section>
         <p id="error" class="error" role="alert" hidden></p>
-        <details class="computer-decisions"><summary>Live computer decisions <span>Current observations only</span></summary><div id="computer-log"></div></details>
+        <details class="computer-decisions"><summary>NPC decisions <span>Current observations only</span></summary><label>Boat <select id="npc-log-select" aria-label="NPC decision log"></select></label><div id="computer-log"></div></details>
         <section id="wind-history" class="wind-history" aria-label="Wind direction history">
           <div class="section-label">WIND HISTORY <span>At boat · clockwise positive</span></div>
           <svg id="wind-chart" viewBox="0 0 750 135" role="img" aria-label="Observed wind shifts over elapsed race time"></svg>

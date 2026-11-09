@@ -1,6 +1,7 @@
 import { DEFAULT_TRAINER_CONFIG, validateConfig } from './engine/config.js';
 import { courseSettings } from './engine/course-config.js';
 import { randomFromSeed } from './engine/wind.js';
+import { requestedNpcCount } from './engine/race-fleet.js';
 
 export const WIND_PRESETS = {
   mixed: { label: 'Mixed / Unpredictable', description: 'Changing shifts and scattered pressure.', values: { windMode: 'oscillating', difficulty: 'medium', maxShift: 15, shiftDuration: 40, favoredSide: 'balanced', shiftDirection: 0 } },
@@ -30,6 +31,8 @@ export function sessionConfig(draft) {
   if (draft.environment !== 'open-water' || !['solo', 'npc'].includes(draft.opponentMode)) throw new Error('Unsupported environment or opponent.');
   if (!WIND_PRESETS[draft.windPreset] && draft.windPreset !== 'custom') throw new Error('Choose a wind preset.');
   const config = courseSettings({ ...draft, current: scenarioCurrent(draft) });
+  requestedNpcCount(config);
+  if (config.npcCount === 0) config.opponentMode = 'solo';
   validateConfig(config);
   if (draft.randomize) {
     const random = randomFromSeed(draft.seed ^ 0x71e35);

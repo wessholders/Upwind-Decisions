@@ -1,7 +1,7 @@
 import { STEP } from './config.js';
 import { advance, applyAction, initialBoat } from './physics.js';
-export function replay(scenario, commands, until) {
-    let boat = initialBoat();
+export function replay(scenario, commands, until, start = initialBoat()) {
+    let boat = { ...start, position: { ...start.position }, tackManeuver: start.tackManeuver ? { ...start.tackManeuver } : null };
     const points = [boat];
     let index = 0;
     while (boat.time < until - 1e-8 && !boat.finished) {

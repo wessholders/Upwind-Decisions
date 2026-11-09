@@ -16,6 +16,9 @@ import { createGameShell } from './game-shell.js';
 import { bindSailingKeyboard } from './keyboard.js';
 import { sailingHeading } from './engine/physics.js';
 import { signedAngle } from './engine/geometry.js';
+import { fleetIsActive } from './engine/race-fleet.js';
+import { standingsView } from './views/standings.js';
+import { escapeHtml } from './views/html.js';
 
 const trainer = createTrainer();
 const { state } = trainer;
@@ -27,11 +30,12 @@ let worker = null;
 let benchmarkRevision = -1;
 let lastResults = null;
 let lastComputerLogLength = -1;
+let lastComputerId = null, lastStandings = '', lastRoster = '';
 const organicWind = new RaceWindLayer();
 let shell = null, keyboard = null;
 
 const compass = degrees => `${(Math.round(degrees) % 360).toString().padStart(3, '0')}°`;
-const computerActive = () => state.scenario.config.opponentMode !== 'solo' && state.computer.status !== 'timed-out' && !state.computer.boat.finished;
+const computerActive = () => fleetIsActive(state);
 const displayedTime = () => state.inspection?.time ?? state.raceTime;
 const needsAnimation = () => shell?.screen === 'session' && !document.hidden && !state.inspection && (state.phase === 'sailing' ||
   (state.phase === 'finished' && !state.computerPaused && computerActive()));
@@ -98,7 +102,7 @@ function render(includeWind = true) {
   ui.bear.setAttribute('aria-pressed', String(bear.pressed)); ui.bear.dataset.state = bear.state;
   ui['bear-status'].textContent = bear.description; ui['bear-status'].dataset.state = bear.state;
   ui.start.disabled = Boolean(state.inspection) || (state.phase === 'finished' && !computerActive());
-  ui.start.textContent = state.phase === 'finished' ? (state.computerPaused ? '▶ Resume computer' : computerActive() ? 'Ⅱ Pause computer' : 'Leg complete') : state.phase === 'sailing' ? 'Ⅱ Pause / Menu' : state.phase === 'paused' ? '▶ Resume' : '▶ Start Race';
+  ui.start.textContent = state.phase === 'finished' ? (computerActive() ? state.computerPaused ? '▶ Resume NPCs' : 'Ⅱ Pause NPCs' : 'Leg complete') : state.phase === 'sailing' ? 'Ⅱ Pause / Menu' : state.phase === 'paused' ? '▶ Resume' : '▶ Start Race';
   const rules = courseRules(scenario.config), upwind = isUpwindFinish(scenario.config);
   ui['instrument-hint'].textContent = state.inspection ? `Viewing the reference just before tack ${state.inspection.number}. The field and instruments show that decision's time and location.` : state.phase === 'ready'
     ? upwind ? 'Cross the fixed finish line between the pins from downwind to upwind. Either tack may finish.'
@@ -119,13 +123,21 @@ function render(includeWind = true) {
   ui['wind-time'].textContent = `Wind at ${formatTime(time)}${state.inspection ? ` (${time.toFixed(1)} s)` : ''}`;
   ui['inspection-banner'].hidden = !state.inspection;
   if (state.inspection) ui['inspection-label'].textContent = `Reference tack ${state.inspection.number} · ${formatTime(time)} · ${state.inspection.fromTack} → ${state.inspection.toTack}`;
-  const computer = state.computer;
-  ui['computer-state'].textContent = computer.boat.finished ? `Finished ${formatTime(computer.boat.time)}` : computer.status === 'timed-out' ? 'Race limit reached' : state.phase === 'ready' ? 'Ready to race' : `${formatTime(computer.boat.time)} · ${computer.boat.tack} · ${computer.boat.penaltyRemaining > 0 ? 'tacking' : sailingSpeedKnots(computer.boat, scenario).toFixed(1) + ' kn'}`;
+  const selector = document.getElementById('npc-log-select');
+  const roster = state.npcs.map(npc => `<option value="${escapeHtml(npc.configuration.id)}">${escapeHtml(npc.identity ? `${npc.identity.shortLabel} · ${npc.identity.tier}` : 'Live computer')}</option>`).join('');
+  if (roster !== lastRoster) { selector.innerHTML = roster; lastRoster = roster; }
+  const computer = state.npcs.find(npc => npc.configuration.id === selector.value) ?? state.computer;
+  ui['computer-state'].textContent = state.npcs.length > 1 ? `${state.npcs.length} All-Rounders · ${state.npcs.filter(npc => npc.boat.finished).length} finished` : computer.boat.finished ? `Finished ${formatTime(computer.boat.time)}` : computer.status === 'timed-out' ? 'Race limit reached' : state.phase === 'ready' ? 'Ready to race' : `${formatTime(computer.boat.time)} · ${computer.boat.tack} · ${computer.boat.penaltyRemaining > 0 ? 'tacking' : sailingSpeedKnots(computer.boat, scenario).toFixed(1) + ' kn'}`;
   ui['computer-reason'].textContent = computer.latestReason;
-  if (computer.decisions.length !== lastComputerLogLength) {
-    ui['computer-log'].innerHTML = computerLogView(computer); lastComputerLogLength = computer.decisions.length;
+  if (computer.decisions.length !== lastComputerLogLength || computer.configuration.id !== lastComputerId) {
+    ui['computer-log'].innerHTML = computerLogView(computer); lastComputerLogLength = computer.decisions.length; lastComputerId = computer.configuration.id;
   }
-  const solo = scenario.config.opponentMode === 'solo';
+  const solo = state.npcs.length === 0;
+  document.getElementById('opponent-label').textContent = state.npcs.length > 1 ? 'NPC FLEET' : 'LIVE COMPUTER';
+  document.getElementById('opponent-legend').textContent = state.npcs.length > 1 ? 'NPC fleet · AR labels' : 'Live computer';
+  const standings = standingsView(state.standings);
+  document.getElementById('fleet-standings').hidden = solo;
+  if (standings !== lastStandings) { document.getElementById('standings-table').innerHTML = standings; lastStandings = standings; }
   document.querySelector('.computer-strip').hidden = solo;
   document.querySelector('.computer-decisions').hidden = solo;
   document.querySelector('.course-footer .purple').parentElement.hidden = solo;
@@ -137,7 +149,7 @@ function render(includeWind = true) {
   if (state.showWind) ui['wind-chart'].innerHTML = windHistoryView(scenario, viewedBoat.time, [...(state.inspection ? state.benchmark.route.points : state.track), viewedBoat]);
   ui.results.hidden = state.phase !== 'finished';
   if (!ui.results.hidden) {
-    const markup = resultsView(boat, state.benchmark, state.error, solo ? null : state.computer, referenceVisible);
+    const markup = resultsView(boat, state.benchmark, state.error, solo || state.fleet ? null : state.computer, referenceVisible);
     if (markup !== lastResults) { ui.results.innerHTML = markup; lastResults = markup; }
   }
   ui.error.hidden = !state.error || state.phase === 'finished';
@@ -162,7 +174,7 @@ function startBenchmark() {
     current.onmessage = event => finish(event.data.result, event.data.error);
     current.onerror = event => finish(null, event.message || 'Background optimizer failed.');
     current.postMessage({ scenario: state.scenario, commands: state.commands, time: state.boat.time,
-      computer: state.scenario.config.opponentMode !== 'solo' && state.computer.boat.finished ? { commands: state.computer.commands, time: state.computer.boat.time } : null });
+      computer: !state.fleet && state.npcs.length && state.computer.boat.finished ? { commands: state.computer.commands, time: state.computer.boat.time } : null });
   } catch (error) {
     worker?.terminate(); worker = null;
     state.error = error.message;
@@ -173,14 +185,14 @@ function startBenchmark() {
 function animate(now) {
   frame = 0;
   const before = state.boat;
-  const beforeComputer = state.computer.boat;
+  const beforeRaceTime = state.raceTime;
   const elapsed = Math.min(0.2, Math.max(0, (now - previousTime) / 1000));
   keyboard?.tick(elapsed);
   shell?.tick(elapsed);
   trainer.tick(elapsed, document.hidden);
   previousTime = now;
-  if (state.boat !== before || state.computer.boat !== beforeComputer) render(false);
-  if (state.scenario.organicWind || state.boat !== before || state.computer.boat !== beforeComputer)
+  if (state.boat !== before || state.raceTime !== beforeRaceTime) render(false);
+  if (state.scenario.organicWind || state.boat !== before || state.raceTime !== beforeRaceTime)
     drawWaterWind(!document.hidden && needsAnimation() ? elapsed : 0);
   if (state.phase === 'finished' && shell.screen === 'session') startBenchmark();
   if (needsAnimation()) frame = requestAnimationFrame(animate);
@@ -229,10 +241,11 @@ function returnFromInspection() {
 }
 ui['inspection-return'].addEventListener('click', () => { returnFromInspection(); update(); });
 ui.playback.addEventListener('change', () => { state.speed = Number(ui.playback.value); });
+document.getElementById('npc-log-select').addEventListener('change', update);
 shell = createGameShell({ trainer, update, clearInput: () => keyboard?.clear(),
   launch(config) {
     trainer.reset(config);
-    worker?.terminate(); worker = null; lastResults = null; lastComputerLogLength = -1;
+    worker?.terminate(); worker = null; lastResults = null; lastComputerLogLength = -1; lastComputerId = null;
   },
   exit() {
     keyboard?.clear(); state.phase = 'paused'; state.computerPaused = true; state.inspection = null;
